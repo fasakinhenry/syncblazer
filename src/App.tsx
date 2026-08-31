@@ -11,6 +11,7 @@ import { AppShell } from "@/components/layout/AppShell.tsx";
 import { PwaUpdatePrompt } from "@/components/PwaUpdatePrompt.tsx";
 import { PageSpinner } from "@/components/ui/Spinner.tsx";
 import { LandingPage } from "@/pages/landing/LandingPage.tsx";
+import { PublicNotePage } from "@/pages/PublicNotePage.tsx";
 import { LoginPage } from "@/pages/auth/LoginPage.tsx";
 import { RegisterPage } from "@/pages/auth/RegisterPage.tsx";
 import { NotFoundPage } from "@/pages/NotFoundPage.tsx";
@@ -102,6 +103,8 @@ export default function App() {
                         />
                       </Route>
                     </Route>
+
+                    <Route path="/n/:token" element={<PublicNotePage />} />
 
                     <Route path="/404" element={<NotFoundPage />} />
                     <Route path="*" element={<Navigate to="/404" replace />} />

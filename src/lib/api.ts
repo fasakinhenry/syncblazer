@@ -1,6 +1,7 @@
-import type { Activity, Device, Note, Room, RoomMember, Transfer, User } from "@/lib/types.ts";
+import type { Activity, Device, Note, NoteVisibility, PublicNote, Room, RoomMember, Transfer, User } from "@/lib/types.ts";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:4000/api";
+const SERVER_ORIGIN = API_URL.replace(/\/api\/?$/, "");
 
 const ACCESS_TOKEN_KEY = "syncblaze.accessToken";
 const REFRESH_TOKEN_KEY = "syncblaze.refreshToken";
@@ -171,11 +172,41 @@ export const api = {
       const query = new URLSearchParams(params as Record<string, string>).toString();
       return apiFetch<{ notes: Note[] }>(`/notes${query ? `?${query}` : ""}`);
     },
-    create: (input: { roomId: string; title?: string; content?: string }) =>
-      apiFetch<{ note: Note }>("/notes", { method: "POST", body: input }),
-    update: (noteId: string, input: { title?: string; content?: string }) =>
-      apiFetch<{ note: Note }>(`/notes/${noteId}`, { method: "PATCH", body: input }),
+    get: (noteId: string) => apiFetch<{ note: Note }>(`/notes/${noteId}`),
+    create: (input: {
+      roomId: string;
+      title?: string;
+      content?: string;
+      visibility?: NoteVisibility;
+      fontFamily?: string;
+    }) => apiFetch<{ note: Note }>("/notes", { method: "POST", body: input }),
+    update: (
+      noteId: string,
+      input: { title?: string; content?: string; visibility?: NoteVisibility; fontFamily?: string }
+    ) => apiFetch<{ note: Note }>(`/notes/${noteId}`, { method: "PATCH", body: input }),
     remove: (noteId: string) => apiFetch<{ noteId: string }>(`/notes/${noteId}`, { method: "DELETE" }),
+    share: (noteId: string, enabled: boolean) =>
+      apiFetch<{ note: Note }>(`/notes/${noteId}/share`, { method: "POST", body: { enabled } }),
+    getShared: (token: string) =>
+      apiFetch<{ note: PublicNote; owner: { name: string; avatarUrl?: string } | null }>(`/notes/shared/${token}`, {
+        skipAuth: true,
+      }),
+  },
+
+  noteImages: {
+    upload: async (file: File): Promise<{ key: string; url: string }> => {
+      const formData = new FormData();
+      formData.append("image", file);
+      return apiFetch<{ key: string; url: string }>("/note-images", { method: "POST", body: formData });
+    },
+    absoluteUrl: (relativeUrl: string) => `${SERVER_ORIGIN}${relativeUrl}`,
+  },
+
+  linkPreview: {
+    get: (url: string) =>
+      apiFetch<{ url: string; title: string; description: string | null; image: string | null }>(
+        `/link-preview?url=${encodeURIComponent(url)}`
+      ),
   },
 
   transfers: {

@@ -40,13 +40,26 @@ export interface RoomMember {
   avatarUrl?: string;
 }
 
+export type NoteVisibility = "private" | "room";
+
 export interface Note {
   _id: string;
   ownerId: string;
   roomId: string;
   title: string;
+  /** Canonical storage format is Markdown. */
   content: string;
+  fontFamily: string;
+  visibility: NoteVisibility;
+  publicShare?: { enabled: boolean; token?: string };
   createdAt: string;
+  updatedAt: string;
+}
+
+export interface PublicNote {
+  title: string;
+  content: string;
+  fontFamily: string;
   updatedAt: string;
 }
 
