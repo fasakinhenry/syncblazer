@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { api } from "@/lib/api.ts";
 import type { Room } from "@/lib/types.ts";
 import { useAuth } from "@/context/AuthContext.tsx";
+import { useSocket } from "@/context/SocketContext.tsx";
 
 interface RoomContextValue {
   rooms: Room[];
@@ -19,6 +20,7 @@ const RoomContext = createContext<RoomContextValue>({
 
 export function RoomProvider({ children }: { children: ReactNode }) {
   const { status } = useAuth();
+  const { socket } = useSocket();
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -36,6 +38,21 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     refresh().finally(() => setLoading(false));
   }, [status, refresh]);
+
+  // Keep device/member counts on "Your rooms" live: a device connecting or a
+  // new member joining a shared room shouldn't need a manual reload to show
+  // up here, since this list is what every page reads defaultRoom/rooms from.
+  useEffect(() => {
+    if (!socket || status !== "authenticated") return;
+    const onChange = () => void refresh();
+
+    socket.on("network:changed", onChange);
+    socket.on("room:member-joined", onChange);
+    return () => {
+      socket.off("network:changed", onChange);
+      socket.off("room:member-joined", onChange);
+    };
+  }, [socket, status, refresh]);
 
   const defaultRoom = useMemo(() => rooms.find((r) => r.isDefault) ?? rooms[0] ?? null, [rooms]);
 

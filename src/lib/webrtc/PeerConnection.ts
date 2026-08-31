@@ -1,9 +1,29 @@
 import type { Socket } from "socket.io-client";
 
-const ICE_SERVERS: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
+// STUN alone often isn't enough even for two devices on the same Wi-Fi:
+// browsers hide local IPs behind mDNS names for privacy, and most home
+// routers don't support "NAT hairpinning" (reaching a LAN device via the
+// router's own public IP), so the direct/host candidate pairing can fail
+// silently. A TURN relay is the fallback that makes the connection actually
+// succeed in that case — traffic still never touches our own backend, it
+// just relays through this third-party server instead of going fully direct.
+// Openrelay's free TURN service (https://www.metered.ca/tools/openrelay/) is
+// fine for an MVP's traffic volume; swap in dedicated TURN credentials
+// (Twilio NTS, a self-hosted coturn, etc.) if this needs to scale.
+const ICE_SERVERS: RTCIceServer[] = [
+  { urls: "stun:stun.l.google.com:19302" },
+  { urls: "stun:openrelay.metered.ca:80" },
+  { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
+  { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
+  {
+    urls: "turn:openrelay.metered.ca:443?transport=tcp",
+    username: "openrelayproject",
+    credential: "openrelayproject",
+  },
+];
 const CHUNK_SIZE = 16 * 1024; // 16KB: safe across browsers for RTCDataChannel
 const BUFFERED_AMOUNT_LOW_THRESHOLD = CHUNK_SIZE * 8;
-const CONNECT_TIMEOUT_MS = 8000;
+const CONNECT_TIMEOUT_MS = 15000;
 
 export type TransferKind = "file" | "image" | "text" | "link";
 

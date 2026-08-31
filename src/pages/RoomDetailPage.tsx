@@ -62,14 +62,21 @@ export function RoomDetailPage() {
     };
     const onActivity = (item: Activity) => setActivity((prev) => [item, ...prev].slice(0, 20));
     const onMemberJoined = () => load();
+    // device:presence above only updates a device already in the list — it
+    // can't add one. A brand-new device (just paired, or just logged in on
+    // another of your devices) needs a real refetch to show up without a
+    // manual reload; the backend emits this alongside every presence change.
+    const onNetworkChanged = () => load();
 
     socket.on("device:presence", onPresence);
     socket.on("activity:new", onActivity);
     socket.on("room:member-joined", onMemberJoined);
+    socket.on("network:changed", onNetworkChanged);
     return () => {
       socket.off("device:presence", onPresence);
       socket.off("activity:new", onActivity);
       socket.off("room:member-joined", onMemberJoined);
+      socket.off("network:changed", onNetworkChanged);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket, roomId]);
