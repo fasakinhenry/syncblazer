@@ -21,6 +21,7 @@ interface AuthContextValue {
   continueAsGuest: () => Promise<void>;
   loginWithGoogle: (idToken: string) => Promise<void>;
   updateProfile: (input: { name?: string; avatarUrl?: string }) => Promise<void>;
+  deleteAccount: () => Promise<void>;
   logout: () => void;
 }
 
@@ -107,9 +108,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(user);
   }, []);
 
+  const deleteAccount = useCallback(async () => {
+    await api.auth.deleteAccount();
+    logout();
+  }, [logout]);
+
   const value = useMemo<AuthContextValue>(
-    () => ({ status, user, currentDevice, login, register, continueAsGuest, loginWithGoogle, updateProfile, logout }),
-    [status, user, currentDevice, login, register, continueAsGuest, loginWithGoogle, updateProfile, logout]
+    () => ({ status, user, currentDevice, login, register, continueAsGuest, loginWithGoogle, updateProfile, deleteAccount, logout }),
+    [status, user, currentDevice, login, register, continueAsGuest, loginWithGoogle, updateProfile, deleteAccount, logout]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

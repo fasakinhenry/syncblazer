@@ -56,7 +56,7 @@ export function LocalNetworkSection() {
       <input ref={fileInputRef} type="file" className="hidden" onChange={onFileChosen} />
       <div className="mb-3 flex items-center gap-2">
         <Lightning className="h-4 w-4 text-success" weight="fill" />
-        <h2 className="text-sm font-semibold text-text-secondary">On your network right now</h2>
+        <h2 className="text-sm font-semibold text-text-secondary">Local room</h2>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {devices.map((device) => {

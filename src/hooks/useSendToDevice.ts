@@ -14,7 +14,10 @@ export function useSendToDevice(roomId: string | undefined) {
 
   const send = async (targetDeviceId: string, targetDeviceName: string, file: File) => {
     const currentDevice = getCurrentDevice();
-    if (!currentDevice || !roomId) return;
+    if (!currentDevice || !roomId) {
+      toast("Still setting up your workspace, give it a second and try again.", "info");
+      return;
+    }
 
     setSendingTo(targetDeviceId);
     const kind = file.type.startsWith("image/") ? "image" : "file";

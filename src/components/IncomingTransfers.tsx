@@ -1,6 +1,10 @@
+import { useState } from "react";
 import { DownloadSimple, File as FileIcon, Image as ImageIcon, Link as LinkIcon, TextAa, X } from "@phosphor-icons/react";
-import { usePeerTransfer } from "@/context/PeerTransferContext.tsx";
+import { usePeerTransfer, type IncomingTransfer } from "@/context/PeerTransferContext.tsx";
+import { useToast } from "@/context/ToastContext.tsx";
+import { api } from "@/lib/api.ts";
 import { formatBytes } from "@/lib/format.ts";
+import { Spinner } from "@/components/ui/Spinner.tsx";
 import type { TransferKind } from "@/lib/webrtc/PeerConnection.ts";
 
 const KIND_ICON: Record<TransferKind, typeof FileIcon> = {
@@ -23,14 +27,34 @@ function downloadBlob(blob: Blob, name: string) {
 
 export function IncomingTransfers() {
   const { incomingTransfers, dismissIncoming } = usePeerTransfer();
+  const { toast } = useToast();
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   if (incomingTransfers.length === 0) return null;
+
+  const handleDownload = async (t: IncomingTransfer) => {
+    if (t.blob) {
+      downloadBlob(t.blob, t.meta.name);
+      return;
+    }
+    // Cloud-relayed: the file is already on the server, waiting to be pulled down.
+    setDownloadingId(t.id);
+    try {
+      const blob = await api.uploads.download(t.id);
+      downloadBlob(blob, t.meta.name);
+    } catch {
+      toast("Couldn't download this file. Please try again.", "error");
+    } finally {
+      setDownloadingId(null);
+    }
+  };
 
   return (
     <div className="fixed bottom-20 right-4 z-50 flex w-full max-w-xs flex-col gap-2 md:bottom-6">
       {incomingTransfers.map((t) => {
         const Icon = KIND_ICON[t.meta.kind];
         const percent = t.meta.size > 0 ? Math.round((t.bytesTransferred / t.meta.size) * 100) : 100;
+        const isDownloading = downloadingId === t.id;
 
         return (
           <div key={t.id} className="rounded-xl border border-border bg-surface p-4 shadow-lg">
@@ -40,7 +64,12 @@ export function IncomingTransfers() {
                 <p className="truncate text-sm font-medium text-text-primary">{t.meta.name}</p>
                 {t.meta.kind === "file" || t.meta.kind === "image" ? (
                   <p className="text-xs text-text-secondary">
-                    {t.status === "completed" ? "Received" : `${percent}%`} · {formatBytes(t.meta.size)}
+                    {t.status === "completed"
+                      ? t.method === "cloud"
+                        ? "Ready to download"
+                        : "Received"
+                      : `${percent}%`}{" "}
+                    · {formatBytes(t.meta.size)}
                   </p>
                 ) : (
                   <p className="mt-1 line-clamp-3 break-words text-xs text-text-secondary">{t.meta.textContent}</p>
@@ -61,13 +90,14 @@ export function IncomingTransfers() {
               </div>
             )}
 
-            {t.status === "completed" && t.blob && (
+            {t.status === "completed" && (t.meta.kind === "file" || t.meta.kind === "image") && (
               <button
-                onClick={() => downloadBlob(t.blob!, t.meta.name)}
-                className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg bg-brand py-2 text-sm font-medium text-white hover:bg-brand-hover"
+                onClick={() => handleDownload(t)}
+                disabled={isDownloading}
+                className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg bg-brand py-2 text-sm font-medium text-white hover:bg-brand-hover disabled:opacity-60"
               >
-                <DownloadSimple className="h-4 w-4" />
-                Save file
+                {isDownloading ? <Spinner className="h-4 w-4 border-white/40 border-t-white" /> : <DownloadSimple className="h-4 w-4" />}
+                {isDownloading ? "Downloading…" : "Save file"}
               </button>
             )}
 

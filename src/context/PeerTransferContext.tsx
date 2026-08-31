@@ -11,6 +11,7 @@ import {
 import { PeerConnection, type TransferMeta } from "@/lib/webrtc/PeerConnection.ts";
 import { useSocket } from "@/context/SocketContext.tsx";
 import { getCurrentDevice } from "@/lib/deviceInfo.ts";
+import type { Transfer } from "@/lib/types.ts";
 
 export interface IncomingTransfer {
   id: string;
@@ -19,6 +20,9 @@ export interface IncomingTransfer {
   bytesTransferred: number;
   status: "receiving" | "completed" | "cancelled";
   blob?: Blob;
+  /** "local" transfers already carry their bytes (blob, in memory);
+   * "cloud" ones need an explicit download from the backend on demand. */
+  method: "local" | "cloud";
 }
 
 interface SendFileResult {
@@ -54,7 +58,7 @@ export function PeerTransferProvider({ children }: { children: ReactNode }) {
         onIncomingMeta: (meta) => {
           setIncomingTransfers((prev) => [
             ...prev,
-            { id: meta.id, meta, fromDeviceId: targetDeviceId, bytesTransferred: 0, status: "receiving" },
+            { id: meta.id, meta, fromDeviceId: targetDeviceId, bytesTransferred: 0, status: "receiving", method: "local" },
           ]);
         },
         onProgress: (id, bytesTransferred) => {
@@ -66,7 +70,14 @@ export function PeerTransferProvider({ children }: { children: ReactNode }) {
         onTextComplete: (meta) => {
           setIncomingTransfers((prev) => [
             ...prev,
-            { id: meta.id, meta, fromDeviceId: targetDeviceId, bytesTransferred: meta.size, status: "completed" },
+            {
+              id: meta.id,
+              meta,
+              fromDeviceId: targetDeviceId,
+              bytesTransferred: meta.size,
+              status: "completed",
+              method: "local",
+            },
           ]);
         },
         onClose: () => {
@@ -92,6 +103,45 @@ export function PeerTransferProvider({ children }: { children: ReactNode }) {
       socket.off("signal:receive", onSignal);
     };
   }, [socket, getOrCreateConnection]);
+
+  // Direct (P2P) arrivals are already tracked live above via the data channel
+  // itself. Cloud-relayed transfers never open a channel, so the only way to
+  // know one has arrived is this socket notification the backend sends after
+  // the sender's upload finishes — the file is already sitting on the server,
+  // ready to be pulled down with a Download tap.
+  useEffect(() => {
+    if (!socket) return;
+
+    const onIncoming = ({ transfer }: { transfer: Transfer }) => {
+      if (transfer.transferMethod !== "cloud") return;
+
+      const meta: TransferMeta = {
+        id: transfer._id,
+        name: transfer.name,
+        size: transfer.size,
+        mimeType: transfer.mimeType,
+        kind: transfer.type,
+        textContent: transfer.textContent,
+      };
+
+      setIncomingTransfers((prev) => [
+        ...prev,
+        {
+          id: transfer._id,
+          meta,
+          fromDeviceId: typeof transfer.senderDeviceId === "string" ? transfer.senderDeviceId : transfer.senderDeviceId._id,
+          bytesTransferred: transfer.size,
+          status: "completed",
+          method: "cloud",
+        },
+      ]);
+    };
+
+    socket.on("transfer:incoming", onIncoming);
+    return () => {
+      socket.off("transfer:incoming", onIncoming);
+    };
+  }, [socket]);
 
   useEffect(() => {
     const connections = connectionsRef.current;

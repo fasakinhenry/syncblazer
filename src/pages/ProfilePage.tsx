@@ -21,7 +21,7 @@ const THEME_OPTIONS = [
 ] as const;
 
 export function ProfilePage() {
-  const { user, logout, updateProfile } = useAuth();
+  const { user, logout, updateProfile, deleteAccount } = useAuth();
   const { rooms } = useRooms();
   const { theme, setTheme } = useTheme();
   const { toast } = useToast();
@@ -50,6 +50,16 @@ export function ProfilePage() {
   const selectAvatar = async (avatarUrl: string) => {
     await updateProfile({ avatarUrl });
     toast("Avatar updated", "success");
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!window.confirm("Delete your account and all associated data? This can't be undone.")) return;
+    try {
+      await deleteAccount();
+      toast("Account deleted", "success");
+    } catch {
+      toast("We couldn't delete this account right now.", "error");
+    }
   };
 
   return (
@@ -118,7 +128,11 @@ export function ProfilePage() {
         </Link>
       </Card>
 
-      <InstallAppButton className="w-full md:hidden" />
+      <InstallAppButton className="w-full" />
+
+      <Button variant="destructive" onClick={handleDeleteAccount} className="gap-1.5">
+        Delete account
+      </Button>
 
       <Button variant="secondary" onClick={logout} className="gap-1.5">
         <SignOut className="h-4 w-4" />

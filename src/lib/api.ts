@@ -133,6 +133,7 @@ export const api = {
     me: () => apiFetch<{ user: User }>("/auth/me"),
     updateMe: (input: { name?: string; avatarUrl?: string }) =>
       apiFetch<{ user: User }>("/auth/me", { method: "PATCH", body: input }),
+    deleteAccount: () => apiFetch<{ deleted: boolean }>("/auth/me", { method: "DELETE" }),
   },
 
   rooms: {
@@ -245,5 +246,13 @@ export const api = {
         xhr.onerror = () => reject(new ApiClientError(0, "Upload failed. Check your connection and try again."));
         xhr.send(formData);
       }),
+    download: async (transferId: string): Promise<Blob> => {
+      const token = tokenStore.getAccessToken();
+      const res = await fetch(`${API_URL}/uploads/${transferId}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      if (!res.ok) throw new ApiClientError(res.status, "Couldn't download this file");
+      return res.blob();
+    },
   },
 };
