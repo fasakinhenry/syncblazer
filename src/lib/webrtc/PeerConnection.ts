@@ -98,17 +98,20 @@ export class PeerConnection {
   private waitForChannelOpen(): Promise<void> {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => reject(new Error("Connection timed out")), CONNECT_TIMEOUT_MS);
+      const channel = this.channel;
+
       const check = () => {
-        if (this.channel?.readyState === "open") {
+        if (channel?.readyState === "open") {
           clearTimeout(timeout);
           resolve();
         }
       };
       check();
-      const originalOnOpen = this.channel?.onopen;
-      if (this.channel) {
-        this.channel.onopen = (e) => {
-          originalOnOpen?.call(this.channel, e);
+
+      const originalOnOpen = channel?.onopen;
+      if (channel) {
+        channel.onopen = (e) => {
+          originalOnOpen?.call(channel, e);
           clearTimeout(timeout);
           resolve();
         };
