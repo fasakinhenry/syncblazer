@@ -104,8 +104,22 @@ export class LocalPeerConnection {
     this.pc = new RTCPeerConnection({ iceServers: [] });
 
     this.pc.onconnectionstatechange = () => {
-      if (this.pc.connectionState === "failed" || this.pc.connectionState === "closed") {
+      if (this.pc.connectionState === "closed") {
         this.handlers.onClose?.();
+        return;
+      }
+      if (this.pc.connectionState === "failed") {
+        // Same reasoning as waitForChannelOpen: a background tab (very
+        // normal mid-handshake here — you look away to go type a code on
+        // the other device) can make the browser report "failed" for
+        // reasons that have nothing to do with the connection once it's
+        // foregrounded again. Give it a few seconds to prove that's real
+        // before treating this peer as actually gone.
+        setTimeout(() => {
+          if (this.pc.connectionState === "failed" || this.pc.connectionState === "closed") {
+            this.handlers.onClose?.();
+          }
+        }, 5000);
       }
     };
     this.pc.ondatachannel = (event) => {
@@ -147,6 +161,20 @@ export class LocalPeerConnection {
     this.handlers = handlers;
   }
 
+  /**
+   * Waits for the data channel to open. Deliberately does NOT treat a
+   * `connectionState === "failed"` signal as an immediate, permanent
+   * give-up: the natural flow here (scan a code on the phone, then look
+   * away to go type/scan the reply on the other device) routinely
+   * backgrounds the tab for a bit, and mobile browsers can suspend JS
+   * timers and briefly disrupt the network state while backgrounded —
+   * producing a "failed" reading that has nothing to do with whether the
+   * connection actually works once the tab is active again. The timeout
+   * is the only thing that gives up here; a visibilitychange listener
+   * forces an immediate re-check when the tab comes back to the
+   * foreground, so a throttled poll interval doesn't add extra delay on
+   * top of however long the person was away.
+   */
   waitForChannelOpen(timeoutMs = 10000): Promise<void> {
     return new Promise((resolve, reject) => {
       if (this.channel?.readyState === "open") {
@@ -158,29 +186,28 @@ export class LocalPeerConnection {
       const cleanup = () => {
         clearTimeout(timeout);
         clearInterval(interval);
-        this.pc.removeEventListener("connectionstatechange", onStateChange);
+        document.removeEventListener("visibilitychange", onVisible);
       };
-      const succeed = () => {
+      const check = () => {
         if (settled) return;
-        settled = true;
-        cleanup();
-        resolve();
-      };
-      const fail = (message: string) => {
-        if (settled) return;
-        settled = true;
-        cleanup();
-        reject(new Error(message));
+        if (this.channel?.readyState === "open") {
+          settled = true;
+          cleanup();
+          resolve();
+        }
       };
 
-      const timeout = setTimeout(() => fail("Connection timed out"), timeoutMs);
-      const interval = setInterval(() => {
-        if (this.channel?.readyState === "open") succeed();
-      }, 150);
-      const onStateChange = () => {
-        if (this.pc.connectionState === "failed") fail("Connection failed");
+      const timeout = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(new Error("Connection timed out"));
+      }, timeoutMs);
+      const interval = setInterval(check, 150);
+      const onVisible = () => {
+        if (document.visibilityState === "visible") check();
       };
-      this.pc.addEventListener("connectionstatechange", onStateChange);
+      document.addEventListener("visibilitychange", onVisible);
     });
   }
 
