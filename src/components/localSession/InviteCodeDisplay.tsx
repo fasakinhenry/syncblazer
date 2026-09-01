@@ -1,7 +1,10 @@
 import { useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { Check, Copy } from "@phosphor-icons/react";
+import { Check, Copy, ShareNetwork } from "@phosphor-icons/react";
 import { formatForManualDisplay } from "@/lib/webrtc/localSignalingCodec.ts";
+import { Button } from "@/components/ui/Button.tsx";
+
+const canShare = typeof navigator !== "undefined" && "share" in navigator;
 
 export function InviteCodeDisplay({ code, instructions }: { code: string; instructions: string }) {
   const [copied, setCopied] = useState(false);
@@ -13,6 +16,10 @@ export function InviteCodeDisplay({ code, instructions }: { code: string; instru
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const share = () => {
+    navigator.share({ title: "SyncBlaze pairing code", text: code }).catch(() => undefined);
+  };
+
   return (
     <div className="flex flex-col items-center gap-3">
       <div className="rounded-xl border border-border bg-white p-3">
@@ -20,9 +27,19 @@ export function InviteCodeDisplay({ code, instructions }: { code: string; instru
       </div>
       <p className="text-center text-sm text-text-secondary">{instructions}</p>
 
-      <button type="button" onClick={() => setShowText((s) => !s)} className="text-xs font-medium text-brand">
-        {showText ? "Hide text code" : "No camera on the other device? Show a text code instead"}
-      </button>
+      <p className="text-xs font-medium text-text-secondary">No camera on the other device?</p>
+
+      <div className="flex flex-wrap items-center justify-center gap-2">
+        {canShare && (
+          <Button size="sm" variant="secondary" onClick={share} className="gap-1.5">
+            <ShareNetwork className="h-3.5 w-3.5" />
+            Share via AirDrop, Nearby Share…
+          </Button>
+        )}
+        <button type="button" onClick={() => setShowText((s) => !s)} className="text-xs font-medium text-brand">
+          {showText ? "Hide text code" : "Or show a text code to type in"}
+        </button>
+      </div>
 
       {showText && (
         <div className="w-full">

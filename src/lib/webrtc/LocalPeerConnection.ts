@@ -9,6 +9,39 @@ const CHUNK_SIZE = 16 * 1024;
 const BUFFERED_AMOUNT_LOW_THRESHOLD = CHUNK_SIZE * 8;
 const ICE_GATHERING_TIMEOUT_MS = 4000;
 
+/**
+ * A full SDP carries a line for every network candidate the browser found —
+ * often several, once you count WiFi, Bluetooth PAN, and virtual adapters.
+ * That's most of what makes the QR/manual code long. Offline we have no
+ * STUN/TURN configured, so everything gathered is already a same-network
+ * "host" candidate; one good one is enough for ICE to connect. This trims
+ * the SDP text we actually transmit down to the single best line, safely —
+ * it only deletes whole lines from real, browser-generated SDP, it never
+ * hand-constructs SDP grammar. The connection's own full candidate set is
+ * untouched locally; this only affects what the other side is told.
+ */
+function trimToBestCandidate(sdp: string): string {
+  const lines = sdp.split("\r\n");
+  const candidateLines = lines.filter((l) => l.startsWith("a=candidate:"));
+  if (candidateLines.length <= 1) return sdp;
+
+  const best =
+    candidateLines.find((l) => /\budp\b/i.test(l) && /\btyp host\b/i.test(l)) ??
+    candidateLines.find((l) => /\btyp host\b/i.test(l)) ??
+    candidateLines[0];
+
+  let kept = false;
+  const filtered = lines.filter((line) => {
+    if (!line.startsWith("a=candidate:")) return true;
+    if (line === best && !kept) {
+      kept = true;
+      return true;
+    }
+    return false;
+  });
+  return filtered.join("\r\n");
+}
+
 export type LocalTransferKind = "file" | "image" | "text" | "link";
 
 export interface LocalTransferMeta {
@@ -84,7 +117,7 @@ export class LocalPeerConnection {
     const offer = await this.pc.createOffer();
     await this.pc.setLocalDescription(offer);
     await this.waitForIceGatheringComplete();
-    return this.pc.localDescription!.sdp;
+    return trimToBestCandidate(this.pc.localDescription!.sdp);
   }
 
   /** Guest side: consume the host's offer, produce a complete answer. */
@@ -93,7 +126,7 @@ export class LocalPeerConnection {
     const answer = await this.pc.createAnswer();
     await this.pc.setLocalDescription(answer);
     await this.waitForIceGatheringComplete();
-    return this.pc.localDescription!.sdp;
+    return trimToBestCandidate(this.pc.localDescription!.sdp);
   }
 
   /** Host side: finish the handshake once the guest's answer comes back. */
