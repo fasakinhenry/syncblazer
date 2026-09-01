@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { File as FileIcon, Fire, Plus, SignIn, Note as NoteIcon } from "@phosphor-icons/react";
+import { File as FileIcon, Fire, Plus, SignIn, Note as NoteIcon, WifiHigh, ArrowRight } from "@phosphor-icons/react";
 import { useAuth } from "@/context/AuthContext.tsx";
 import { useRooms } from "@/context/RoomContext.tsx";
 import { useToast } from "@/context/ToastContext.tsx";
@@ -54,6 +54,22 @@ export function RoomPage() {
         </p>
         <h1 className="text-2xl font-semibold text-text-primary">Your workspace</h1>
       </div>
+
+      <Link
+        to="/local-session"
+        className="flex items-center gap-4 rounded-xl border border-brand/30 bg-brand-soft p-4 transition-colors hover:border-brand"
+      >
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-brand text-white">
+          <WifiHigh className="h-5 w-5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="font-medium text-text-primary">Local session — works with zero internet</p>
+          <p className="text-sm text-text-secondary">
+            Connect over hotspot or Wi-Fi with a QR code and send files directly, even with no one online.
+          </p>
+        </div>
+        <ArrowRight className="h-5 w-5 shrink-0 text-brand" />
+      </Link>
 
       <LocalNetworkSection />
 

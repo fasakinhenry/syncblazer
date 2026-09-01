@@ -6,6 +6,7 @@ import { ToastProvider } from "@/context/ToastContext.tsx";
 import { SocketProvider } from "@/context/SocketContext.tsx";
 import { RoomProvider } from "@/context/RoomContext.tsx";
 import { PeerTransferProvider } from "@/context/PeerTransferContext.tsx";
+import { LocalSessionProvider } from "@/context/LocalSessionContext.tsx";
 import { ProtectedRoute, GuestRoute, PublicRoute } from "@/components/ProtectedRoute.tsx";
 import { AppShell } from "@/components/layout/AppShell.tsx";
 import { PwaUpdatePrompt } from "@/components/PwaUpdatePrompt.tsx";
@@ -17,6 +18,7 @@ import { RegisterPage } from "@/pages/auth/RegisterPage.tsx";
 import { NotFoundPage } from "@/pages/NotFoundPage.tsx";
 
 const RoomPage = lazy(() => import("@/pages/RoomPage.tsx").then((m) => ({ default: m.RoomPage })));
+const LocalSessionPage = lazy(() => import("@/pages/LocalSessionPage.tsx").then((m) => ({ default: m.LocalSessionPage })));
 const RoomDetailPage = lazy(() => import("@/pages/RoomDetailPage.tsx").then((m) => ({ default: m.RoomDetailPage })));
 const NotesPage = lazy(() => import("@/pages/NotesPage.tsx").then((m) => ({ default: m.NotesPage })));
 const QuickBlazePage = lazy(() => import("@/pages/QuickBlazePage.tsx").then((m) => ({ default: m.QuickBlazePage })));
@@ -33,6 +35,7 @@ export default function App() {
             <SocketProvider>
               <RoomProvider>
                 <PeerTransferProvider>
+                  <LocalSessionProvider>
                   <Routes>
                     <Route element={<PublicRoute />}>
                       <Route path="/" element={<LandingPage />} />
@@ -50,6 +53,14 @@ export default function App() {
                           element={
                             <Suspense fallback={<PageSpinner />}>
                               <RoomPage />
+                            </Suspense>
+                          }
+                        />
+                        <Route
+                          path="/local-session"
+                          element={
+                            <Suspense fallback={<PageSpinner />}>
+                              <LocalSessionPage />
                             </Suspense>
                           }
                         />
@@ -110,6 +121,7 @@ export default function App() {
                     <Route path="*" element={<Navigate to="/404" replace />} />
                   </Routes>
                   <PwaUpdatePrompt />
+                  </LocalSessionProvider>
                 </PeerTransferProvider>
               </RoomProvider>
             </SocketProvider>
