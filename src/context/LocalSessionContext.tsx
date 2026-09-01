@@ -218,7 +218,11 @@ export function LocalSessionProvider({ children }: { children: ReactNode }) {
         conn.setHandlers(wireHandlers(peerId, peerName, true));
 
         await conn.acceptAnswer(payload.sdp);
-        await conn.waitForChannelOpen();
+        // The human hand-off is already done by this point (we're holding
+        // their answer code), so this is only the technical ICE handshake —
+        // still worth more than the old 10s now that there are a few
+        // candidates to check instead of one, not the full 30 minutes.
+        await conn.waitForChannelOpen(30 * 1000);
 
         connectionsRef.current.set(peerId, conn);
         pendingConnectionRef.current = null;
@@ -265,7 +269,7 @@ export function LocalSessionProvider({ children }: { children: ReactNode }) {
         // it needs to tolerate that delay — not just the fast technical
         // handshake that follows once the host actually submits it.
         conn
-          .waitForChannelOpen(5 * 60 * 1000)
+          .waitForChannelOpen(30 * 60 * 1000)
           .then(() => {
             setPeers((prev) => prev.map((p) => (p.id === payload.hostId ? { ...p, status: "connected" } : p)));
           })

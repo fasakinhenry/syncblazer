@@ -14,32 +14,37 @@ const ICE_GATHERING_TIMEOUT_MS = 4000;
  * often several, once you count WiFi, Bluetooth PAN, and virtual adapters.
  * That's most of what makes the QR/manual code long. Offline we have no
  * STUN/TURN configured, so everything gathered is already a same-network
- * "host" candidate; one good one is enough for ICE to connect. This trims
- * the SDP text we actually transmit down to the single best line, safely —
- * it only deletes whole lines from real, browser-generated SDP, it never
- * hand-constructs SDP grammar. The connection's own full candidate set is
- * untouched locally; this only affects what the other side is told.
+ * "host" candidate.
+ *
+ * Trying to cut this down to exactly one candidate (an earlier version of
+ * this) shortened the code but hurt real connectivity: phones and laptops
+ * routinely have more than one active interface at a time, and if the one
+ * guessed candidate happens to be on the wrong interface, ICE has nothing
+ * else to fall back to and the connection genuinely fails. Keeping a
+ * handful of the most promising candidates gives ICE real alternatives
+ * while still dropping the ones essentially never useful here (IPv6,
+ * TCP, non-host types) — this only ever deletes whole lines from real,
+ * browser-generated SDP, never hand-constructs SDP grammar. The
+ * connection's own full local candidate set is untouched; this only
+ * affects what gets told to the other side.
  */
-function trimToBestCandidate(sdp: string): string {
+function trimCandidates(sdp: string, maxCandidates = 3): string {
   const lines = sdp.split("\r\n");
   const candidateLines = lines.filter((l) => l.startsWith("a=candidate:"));
-  if (candidateLines.length <= 1) return sdp;
+  if (candidateLines.length <= maxCandidates) return sdp;
 
-  const best =
-    candidateLines.find((l) => /\budp\b/i.test(l) && /\btyp host\b/i.test(l)) ??
-    candidateLines.find((l) => /\btyp host\b/i.test(l)) ??
-    candidateLines[0];
+  const isIPv4 = (l: string) => !l.includes("::") && /(\d{1,3}\.){3}\d{1,3}/.test(l);
+  const scored = candidateLines
+    .map((line, index) => ({
+      line,
+      // Stable order among ties: UDP + host + IPv4 first, otherwise keep
+      // the browser's own original ordering (it already prioritizes).
+      score: (/\budp\b/i.test(line) ? 4 : 0) + (/\btyp host\b/i.test(line) ? 2 : 0) + (isIPv4(line) ? 1 : 0) - index * 0.001,
+    }))
+    .sort((a, b) => b.score - a.score);
 
-  let kept = false;
-  const filtered = lines.filter((line) => {
-    if (!line.startsWith("a=candidate:")) return true;
-    if (line === best && !kept) {
-      kept = true;
-      return true;
-    }
-    return false;
-  });
-  return filtered.join("\r\n");
+  const keep = new Set(scored.slice(0, maxCandidates).map((s) => s.line));
+  return lines.filter((line) => !line.startsWith("a=candidate:") || keep.has(line)).join("\r\n");
 }
 
 export type LocalTransferKind = "file" | "image" | "text" | "link";
@@ -117,7 +122,7 @@ export class LocalPeerConnection {
     const offer = await this.pc.createOffer();
     await this.pc.setLocalDescription(offer);
     await this.waitForIceGatheringComplete();
-    return trimToBestCandidate(this.pc.localDescription!.sdp);
+    return trimCandidates(this.pc.localDescription!.sdp);
   }
 
   /** Guest side: consume the host's offer, produce a complete answer. */
@@ -126,7 +131,7 @@ export class LocalPeerConnection {
     const answer = await this.pc.createAnswer();
     await this.pc.setLocalDescription(answer);
     await this.waitForIceGatheringComplete();
-    return trimToBestCandidate(this.pc.localDescription!.sdp);
+    return trimCandidates(this.pc.localDescription!.sdp);
   }
 
   /** Host side: finish the handshake once the guest's answer comes back. */
