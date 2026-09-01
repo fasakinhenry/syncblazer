@@ -69,6 +69,11 @@ export function LocalSessionProvider({ children }: { children: ReactNode }) {
   const pendingConnectionRef = useRef<LocalPeerConnection | null>(null);
   // Which transfer ids the host is currently relaying, and who they came from.
   const relayingFromRef = useRef<Map<string, string>>(new Map());
+  // Guards completeInvite/joinWithOfferCode against firing twice for the same
+  // handshake (e.g. a duplicate scan result arriving just before React
+  // re-renders the disabled state) — setRemoteDescription throws if called
+  // a second time once the connection has already moved past that state.
+  const handshakeInFlightRef = useRef(false);
 
   const addIncoming = useCallback((id: string, meta: LocalTransferMeta, fromPeerName: string) => {
     setIncomingTransfers((prev) => [...prev, { id, meta, fromPeerName, bytesTransferred: 0, status: "receiving" }]);
@@ -198,8 +203,10 @@ export function LocalSessionProvider({ children }: { children: ReactNode }) {
 
   const completeInvite = useCallback(
     async (answerCode: string) => {
+      if (handshakeInFlightRef.current) return;
       const conn = pendingConnectionRef.current;
       if (!conn) return;
+      handshakeInFlightRef.current = true;
       setConnecting(true);
       setError(null);
       try {
@@ -225,6 +232,7 @@ export function LocalSessionProvider({ children }: { children: ReactNode }) {
       } catch (err) {
         setError(err instanceof Error ? err.message : "That code didn't work. Ask them to try again.");
       } finally {
+        handshakeInFlightRef.current = false;
         setConnecting(false);
       }
     },
@@ -235,6 +243,8 @@ export function LocalSessionProvider({ children }: { children: ReactNode }) {
 
   const joinWithOfferCode = useCallback(
     async (offerCode: string, name: string): Promise<string> => {
+      if (handshakeInFlightRef.current) throw new Error("Already connecting");
+      handshakeInFlightRef.current = true;
       setError(null);
       setConnecting(true);
       try {
@@ -265,6 +275,7 @@ export function LocalSessionProvider({ children }: { children: ReactNode }) {
           guestName: name,
         });
       } finally {
+        handshakeInFlightRef.current = false;
         setConnecting(false);
       }
     },

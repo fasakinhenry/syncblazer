@@ -18,10 +18,20 @@ export function LocalQrScanner({ active, onResult }: LocalQrScannerProps) {
 
   useEffect(() => {
     if (!active || !videoRef.current) return;
+    // qr-scanner decodes continuously while the camera is pointed at a code —
+    // holding it steady for even a moment fires onResult several times with
+    // the same data. A signaling exchange must only ever be submitted once,
+    // so stop scanning the instant we get a hit instead of debouncing it.
+    let resolved = false;
 
     const scanner = new QrScanner(
       videoRef.current,
-      (result) => onResultRef.current(result.data.trim()),
+      (result) => {
+        if (resolved) return;
+        resolved = true;
+        scanner.stop();
+        onResultRef.current(result.data.trim());
+      },
       {
         preferredCamera: "environment",
         highlightScanRegion: true,
