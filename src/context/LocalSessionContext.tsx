@@ -260,8 +260,12 @@ export function LocalSessionProvider({ children }: { children: ReactNode }) {
         connectionsRef.current.set(payload.hostId, conn);
         setPeers([{ id: payload.hostId, name: payload.hostName, status: "connecting" }]);
 
+        // This starts counting before the human hand-off (showing the code
+        // to the host, them scanning/typing it in) has even happened yet, so
+        // it needs to tolerate that delay — not just the fast technical
+        // handshake that follows once the host actually submits it.
         conn
-          .waitForChannelOpen()
+          .waitForChannelOpen(5 * 60 * 1000)
           .then(() => {
             setPeers((prev) => prev.map((p) => (p.id === payload.hostId ? { ...p, status: "connected" } : p)));
           })

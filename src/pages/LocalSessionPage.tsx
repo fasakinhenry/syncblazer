@@ -148,10 +148,14 @@ export function LocalSessionPage() {
     return (
       <div className="mx-auto flex max-w-sm flex-col items-center gap-4 py-10">
         <InviteCodeDisplay code={guestAnswerCode} instructions="Show this to the host — they'll scan or type it to finish connecting you." />
-        <div className="flex items-center gap-2 text-sm text-text-secondary">
-          <Spinner className="h-4 w-4" />
-          Waiting to connect…
-        </div>
+        {error ? (
+          <p className="text-center text-sm text-danger">{error}</p>
+        ) : (
+          <div className="flex items-center gap-2 text-sm text-text-secondary">
+            <Spinner className="h-4 w-4" />
+            Waiting to connect…
+          </div>
+        )}
         <Button variant="ghost" onClick={leaveSession}>
           Cancel
         </Button>
