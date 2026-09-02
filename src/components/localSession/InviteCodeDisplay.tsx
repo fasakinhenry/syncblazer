@@ -22,7 +22,8 @@ export function InviteCodeDisplay({ code, instructions }: { code: string; instru
 
   return (
     <div className="flex flex-col items-center gap-3">
-      <div className="rounded-xl border border-border bg-white p-3">
+      <div className="relative rounded-xl border border-border bg-white p-3">
+        <span className="absolute -inset-1 -z-10 animate-pulse rounded-2xl bg-brand/20" aria-hidden="true" />
         <QRCodeSVG value={code} size={200} />
       </div>
       <p className="text-center text-sm text-text-secondary">{instructions}</p>

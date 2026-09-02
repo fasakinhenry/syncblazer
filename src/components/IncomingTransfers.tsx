@@ -5,6 +5,7 @@ import { useToast } from "@/context/ToastContext.tsx";
 import { api } from "@/lib/api.ts";
 import { formatBytes } from "@/lib/format.ts";
 import { Spinner } from "@/components/ui/Spinner.tsx";
+import { ConfettiBurst } from "@/components/ConfettiBurst.tsx";
 import type { TransferKind } from "@/lib/webrtc/PeerConnection.ts";
 
 const KIND_ICON: Record<TransferKind, typeof FileIcon> = {
@@ -29,12 +30,14 @@ export function IncomingTransfers() {
   const { incomingTransfers, dismissIncoming } = usePeerTransfer();
   const { toast } = useToast();
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [celebrate, setCelebrate] = useState(false);
 
   if (incomingTransfers.length === 0) return null;
 
   const handleDownload = async (t: IncomingTransfer) => {
     if (t.blob) {
       downloadBlob(t.blob, t.meta.name);
+      setCelebrate(true);
       return;
     }
     // Cloud-relayed: the file is already on the server, waiting to be pulled down.
@@ -42,6 +45,7 @@ export function IncomingTransfers() {
     try {
       const blob = await api.uploads.download(t.id);
       downloadBlob(blob, t.meta.name);
+      setCelebrate(true);
     } catch {
       toast("Couldn't download this file. Please try again.", "error");
     } finally {
@@ -51,6 +55,7 @@ export function IncomingTransfers() {
 
   return (
     <div className="fixed bottom-20 right-4 z-50 flex w-full max-w-xs flex-col gap-2 md:bottom-6">
+      <ConfettiBurst active={celebrate} onComplete={() => setCelebrate(false)} />
       {incomingTransfers.map((t) => {
         const Icon = KIND_ICON[t.meta.kind];
         const percent = t.meta.size > 0 ? Math.round((t.bytesTransferred / t.meta.size) * 100) : 100;

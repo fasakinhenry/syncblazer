@@ -1,6 +1,26 @@
 import type { Device, DevicePlatform, DeviceType } from "@/lib/types.ts";
 
 const CURRENT_DEVICE_KEY = "syncblaze.currentDevice";
+const INSTALL_ID_KEY = "syncblaze.installId";
+
+/**
+ * A random id generated once per browser/installation and kept in
+ * localStorage for good — NOT tied to any particular account. Every login
+ * sends this so the backend can recognize "this is the same physical
+ * device you've used before" and reuse its existing Device record instead
+ * of creating a fresh one each time (which previously happened on every
+ * login, piling up duplicate devices). Matching by auto-generated name
+ * alone doesn't work once someone's renamed a device, so this is the
+ * stable identifier that survives renames.
+ */
+export function getOrCreateInstallId(): string {
+  let id = localStorage.getItem(INSTALL_ID_KEY);
+  if (!id) {
+    id = crypto.randomUUID();
+    localStorage.setItem(INSTALL_ID_KEY, id);
+  }
+  return id;
+}
 
 function detectPlatform(): DevicePlatform {
   const ua = navigator.userAgent;
@@ -19,7 +39,7 @@ function detectType(): DeviceType {
   return navigator.maxTouchPoints > 2 && /Mac/i.test(navigator.userAgent) ? "tablet" : "laptop";
 }
 
-export function detectDeviceInfo(): { name: string; type: DeviceType; platform: DevicePlatform } {
+export function detectDeviceInfo(): { name: string; type: DeviceType; platform: DevicePlatform; installId: string } {
   const platform = detectPlatform();
   const type = detectType();
   const platformLabel: Record<DevicePlatform, string> = {
@@ -36,7 +56,12 @@ export function detectDeviceInfo(): { name: string; type: DeviceType; platform: 
     mobile: "Phone",
     tablet: "Tablet",
   };
-  return { name: `${platformLabel[platform]} ${typeLabel[type]}`, type, platform };
+  return {
+    name: `${platformLabel[platform]} ${typeLabel[type]}`,
+    type,
+    platform,
+    installId: getOrCreateInstallId(),
+  };
 }
 
 export function getCurrentDevice(): Device | null {

@@ -3,7 +3,13 @@ import { usePwaInstall } from "@/hooks/usePwaInstall.ts";
 import { Button } from "@/components/ui/Button.tsx";
 import { useToast } from "@/context/ToastContext.tsx";
 
-export function InstallAppButton({ className = "" }: { className?: string }) {
+export function InstallAppButton({
+  className = "",
+  size = "sm",
+}: {
+  className?: string;
+  size?: "sm" | "md" | "lg";
+}) {
   const { canInstall, promptInstall } = usePwaInstall();
   const { toast } = useToast();
 
@@ -15,7 +21,7 @@ export function InstallAppButton({ className = "" }: { className?: string }) {
   };
 
   return (
-    <Button variant="secondary" size="sm" onClick={onClick} className={`gap-1.5 ${className}`}>
+    <Button variant="secondary" size={size} onClick={onClick} className={`gap-1.5 ${className}`}>
       <DownloadSimple className="h-4 w-4" />
       Install app
     </Button>

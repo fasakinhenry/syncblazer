@@ -12,6 +12,7 @@ import { CreateRoomModal } from "@/components/rooms/CreateRoomModal.tsx";
 import { JoinRoomModal } from "@/components/rooms/JoinRoomModal.tsx";
 import { Button } from "@/components/ui/Button.tsx";
 import { PageSpinner } from "@/components/ui/Spinner.tsx";
+import { InstallAppButton } from "@/components/InstallAppButton.tsx";
 
 function greeting(): string {
   const hour = new Date().getHours();
@@ -47,12 +48,15 @@ export function RoomPage() {
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-10">
-      <div>
-        <p className="text-sm text-text-secondary">
-          {greeting()}
-          {user ? `, ${user.name.split(" ")[0]}` : ""}.
-        </p>
-        <h1 className="text-2xl font-semibold text-text-primary">Your workspace</h1>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-sm text-text-secondary">
+            {greeting()}
+            {user ? `, ${user.name.split(" ")[0]}` : ""}.
+          </p>
+          <h1 className="text-2xl font-semibold text-text-primary">Your workspace</h1>
+        </div>
+        <InstallAppButton />
       </div>
 
       <Link
@@ -127,6 +131,7 @@ export function RoomPage() {
         onClose={() => setCreateOpen(false)}
         onCreated={(room) => {
           void refresh();
+          sessionStorage.setItem("syncblaze.celebrateRoomId", room._id);
           navigate(`/rooms/${room._id}`);
         }}
       />

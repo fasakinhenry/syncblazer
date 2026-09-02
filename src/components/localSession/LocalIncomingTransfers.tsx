@@ -1,7 +1,9 @@
+import { useState } from "react";
 import { DownloadSimple, File as FileIcon, Image as ImageIcon, Link as LinkIcon, TextAa, X } from "@phosphor-icons/react";
 import { useLocalSession } from "@/context/LocalSessionContext.tsx";
 import { formatBytes } from "@/lib/format.ts";
 import type { LocalTransferKind } from "@/lib/webrtc/LocalPeerConnection.ts";
+import { ConfettiBurst } from "@/components/ConfettiBurst.tsx";
 
 const KIND_ICON: Record<LocalTransferKind, typeof FileIcon> = {
   file: FileIcon,
@@ -23,10 +25,12 @@ function downloadBlob(blob: Blob, name: string) {
 
 export function LocalIncomingTransfers() {
   const { incomingTransfers, dismissIncoming } = useLocalSession();
+  const [celebrate, setCelebrate] = useState(false);
   if (incomingTransfers.length === 0) return null;
 
   return (
     <div className="fixed bottom-20 right-4 z-50 flex w-full max-w-xs flex-col gap-2 md:bottom-6">
+      <ConfettiBurst active={celebrate} onComplete={() => setCelebrate(false)} />
       {incomingTransfers.map((t) => {
         const Icon = KIND_ICON[t.meta.kind];
         const percent = t.meta.size > 0 ? Math.round((t.bytesTransferred / t.meta.size) * 100) : 100;
@@ -54,7 +58,10 @@ export function LocalIncomingTransfers() {
 
             {t.status === "completed" && t.blob && (
               <button
-                onClick={() => downloadBlob(t.blob!, t.meta.name)}
+                onClick={() => {
+                  downloadBlob(t.blob!, t.meta.name);
+                  setCelebrate(true);
+                }}
                 className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg bg-brand py-2 text-sm font-medium text-white hover:bg-brand-hover"
               >
                 <DownloadSimple className="h-4 w-4" />

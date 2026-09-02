@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { Link } from "react-router-dom";
-import { Monitor, Moon, SignOut, Sun } from "@phosphor-icons/react";
+import { Check, Monitor, Moon, ShareNetwork, SignOut, Sun, UploadSimple } from "@phosphor-icons/react";
 import { useAuth } from "@/context/AuthContext.tsx";
 import { useRooms } from "@/context/RoomContext.tsx";
 import { useTheme } from "@/context/ThemeContext.tsx";
@@ -13,6 +13,8 @@ import { Button } from "@/components/ui/Button.tsx";
 import { Input } from "@/components/ui/Input.tsx";
 import { Badge } from "@/components/ui/Badge.tsx";
 import { InstallAppButton } from "@/components/InstallAppButton.tsx";
+
+const canShare = typeof navigator !== "undefined" && "share" in navigator;
 
 const THEME_OPTIONS = [
   { value: "light", label: "Light", icon: Sun },
@@ -28,6 +30,9 @@ export function ProfilePage() {
   const [deviceCount, setDeviceCount] = useState<number | null>(null);
   const [name, setName] = useState(user?.name ?? "");
   const [savingName, setSavingName] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     api.devices.list().then(({ devices }) => setDeviceCount(devices.length));
@@ -52,6 +57,36 @@ export function ProfilePage() {
     toast("Avatar updated", "success");
   };
 
+  const uploadPhoto = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setUploadingPhoto(true);
+    try {
+      const { url } = await api.noteImages.upload(file);
+      await selectAvatar(api.noteImages.absoluteUrl(url));
+    } catch {
+      toast("Couldn't upload that photo. Try a smaller image.", "error");
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
+  const shareProfile = async () => {
+    const url = `${window.location.origin}/u/${user.id}`;
+    if (canShare) {
+      try {
+        await navigator.share({ title: `${user.name} on SyncBlaze`, url });
+        return;
+      } catch {
+        // fall through to copy
+      }
+    }
+    await navigator.clipboard.writeText(url);
+    setShareCopied(true);
+    setTimeout(() => setShareCopied(false), 2000);
+  };
+
   const handleDeleteAccount = async () => {
     if (!window.confirm("Delete your account and all associated data? This can't be undone.")) return;
     try {
@@ -73,6 +108,10 @@ export function ProfilePage() {
           </div>
           <p className="text-sm text-text-secondary">{user.email ?? "No email on this guest account"}</p>
         </div>
+        <Button size="sm" variant="secondary" onClick={shareProfile} className="gap-1.5">
+          {shareCopied ? <Check className="h-3.5 w-3.5" /> : <ShareNetwork className="h-3.5 w-3.5" />}
+          {shareCopied ? "Link copied" : "Share profile"}
+        </Button>
       </div>
 
       <div className="grid grid-cols-2 gap-3">
@@ -97,7 +136,20 @@ export function ProfilePage() {
       </Card>
 
       <Card className="p-4">
-        <p className="mb-3 text-sm font-medium text-text-primary">Avatar</p>
+        <div className="mb-3 flex items-center justify-between">
+          <p className="text-sm font-medium text-text-primary">Avatar</p>
+          <input ref={photoInputRef} type="file" accept="image/*" className="hidden" onChange={uploadPhoto} />
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => photoInputRef.current?.click()}
+            loading={uploadingPhoto}
+            className="gap-1.5"
+          >
+            <UploadSimple className="h-3.5 w-3.5" />
+            Upload photo
+          </Button>
+        </div>
         <AvatarPicker current={user.avatarUrl} onSelect={selectAvatar} />
       </Card>
 

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
-import { ArrowLeft, Check, Copy, Fire, Trash, UploadSimple } from "@phosphor-icons/react";
+import { ArrowLeft, Check, CloudArrowUp, Copy, Fire, Trash, UploadSimple, WifiHigh } from "@phosphor-icons/react";
 import { api } from "@/lib/api.ts";
 import type { Activity, Device, Room, RoomMember } from "@/lib/types.ts";
 import { useAuth } from "@/context/AuthContext.tsx";
@@ -16,6 +16,7 @@ import { Card } from "@/components/ui/Card.tsx";
 import { Button } from "@/components/ui/Button.tsx";
 import { PageSpinner } from "@/components/ui/Spinner.tsx";
 import { EmptyState } from "@/components/ui/EmptyState.tsx";
+import { ConfettiBurst } from "@/components/ConfettiBurst.tsx";
 
 export function RoomDetailPage() {
   const { roomId } = useParams<{ roomId: string }>();
@@ -29,9 +30,18 @@ export function RoomDetailPage() {
   const [members, setMembers] = useState<RoomMember[]>([]);
   const [activity, setActivity] = useState<Activity[]>([]);
   const [copied, setCopied] = useState(false);
+  const [celebrate, setCelebrate] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const targetRef = useRef<{ id: string; name: string } | null>(null);
   const currentDeviceId = getCurrentDevice()?._id;
+
+  useEffect(() => {
+    if (!roomId) return;
+    if (sessionStorage.getItem("syncblaze.celebrateRoomId") === roomId) {
+      sessionStorage.removeItem("syncblaze.celebrateRoomId");
+      setCelebrate(true);
+    }
+  }, [roomId]);
 
   const load = () => {
     if (!roomId) return;
@@ -115,6 +125,7 @@ export function RoomDetailPage() {
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-8">
       <input ref={fileInputRef} type="file" className="hidden" onChange={onFileChosen} />
+      <ConfettiBurst active={celebrate} onComplete={() => setCelebrate(false)} />
 
       <div className="flex items-center gap-3">
         <button
@@ -208,13 +219,26 @@ export function RoomDetailPage() {
           <EmptyState title="Nothing here yet" description="Transfers and joins in this room will show up here." />
         ) : (
           <Card className="divide-y divide-border">
-            {activity.map((item) => (
-              <div key={item._id} className="flex items-center gap-3 px-4 py-3">
-                <Fire className="h-4 w-4 shrink-0 text-text-secondary" />
-                <p className="flex-1 text-sm text-text-primary">{item.message}</p>
-                <span className="shrink-0 text-xs text-text-secondary">{formatRelativeTime(item.createdAt)}</span>
-              </div>
-            ))}
+            {activity.map((item) => {
+              const transferMethod = item.type === "transfer" ? (item.metadata?.transferMethod as string | undefined) : undefined;
+              return (
+                <div key={item._id} className="flex items-center gap-3 px-4 py-3">
+                  <Fire className="h-4 w-4 shrink-0 text-text-secondary" />
+                  <p className="flex-1 text-sm text-text-primary">{item.message}</p>
+                  {transferMethod && (
+                    <span className="flex shrink-0 items-center gap-1 rounded-full bg-surface-hover px-2 py-0.5 text-[11px] font-medium text-text-secondary">
+                      {transferMethod === "local" ? (
+                        <WifiHigh className="h-3 w-3" />
+                      ) : (
+                        <CloudArrowUp className="h-3 w-3" />
+                      )}
+                      {transferMethod === "local" ? "Local network" : "Cloud"}
+                    </span>
+                  )}
+                  <span className="shrink-0 text-xs text-text-secondary">{formatRelativeTime(item.createdAt)}</span>
+                </div>
+              );
+            })}
           </Card>
         )}
       </section>

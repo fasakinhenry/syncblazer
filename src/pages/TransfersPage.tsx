@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, File as FileIcon, Image as ImageIcon, LinkSimple, ArrowClockwise, TextAa } from "@phosphor-icons/react";
+import { ArrowLeft, CloudArrowUp, File as FileIcon, Image as ImageIcon, LinkSimple, ArrowClockwise, TextAa, WifiHigh } from "@phosphor-icons/react";
 import { Link } from "react-router-dom";
 import { api } from "@/lib/api.ts";
 import type { Device, Transfer, TransferType } from "@/lib/types.ts";
@@ -93,6 +93,14 @@ export function TransfersPage() {
                     {t.size ? ` · ${formatBytes(t.size)}` : ""} · {formatRelativeTime(t.createdAt)}
                   </p>
                 </div>
+                <span className="hidden shrink-0 items-center gap-1 text-xs text-text-secondary sm:flex">
+                  {t.transferMethod === "local" ? (
+                    <WifiHigh className="h-3.5 w-3.5" />
+                  ) : (
+                    <CloudArrowUp className="h-3.5 w-3.5" />
+                  )}
+                  {t.transferMethod === "local" ? "Local" : "Cloud"}
+                </span>
                 <Badge tone={STATUS_TONE[t.status]}>{STATUS_LABEL[t.status]}</Badge>
                 {t.status === "failed" && (
                   <Button size="sm" variant="ghost" onClick={() => retry(t._id)} className="gap-1">

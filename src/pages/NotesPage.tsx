@@ -17,7 +17,6 @@ import { useRooms } from "@/context/RoomContext.tsx";
 import { useSocket } from "@/context/SocketContext.tsx";
 import { useToast } from "@/context/ToastContext.tsx";
 import { useNotesSync } from "@/hooks/useNotesSync.ts";
-import { useDebouncedCallback } from "@/hooks/useDebouncedCallback.ts";
 import {
   cacheNote,
   cacheNotes,
@@ -65,6 +64,12 @@ export function NotesPage() {
   // the editor and jump the cursor for content we already have.
   const knownVersion = useRef<Record<string, string>>({});
   const exportRef = useRef<HTMLDivElement>(null);
+  // One debounce timer + merged patch PER NOTE — not a single shared slot.
+  // A shared slot meant a content edit arriving before a font edit's 600ms
+  // elapsed would cancel and replace it outright, silently dropping the
+  // font change (and the same for switching notes mid-debounce).
+  const pendingPatchRef = useRef<Record<string, { title?: string; content?: string; fontFamily?: string }>>({});
+  const saveTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   const selected = useMemo(() => notes?.find((n) => n._id === selectedId) ?? null, [notes, selectedId]);
   const selectedRoom = useMemo(() => rooms.find((r) => r._id === selected?.roomId), [rooms, selected]);
@@ -145,27 +150,64 @@ export function NotesPage() {
     setDraftFont(selected?.fontFamily ?? DEFAULT_NOTE_FONT);
   }, [selected]);
 
-  const persist = useDebouncedCallback(async (noteId: string, patch: { title?: string; content?: string; fontFamily?: string }) => {
-    setSaving(true);
-    try {
-      if (!online) {
+  const flushPersist = useCallback(
+    async (noteId: string) => {
+      const patch = pendingPatchRef.current[noteId];
+      if (!patch) return;
+      delete pendingPatchRef.current[noteId];
+      delete saveTimersRef.current[noteId];
+
+      setSaving(true);
+      try {
+        if (!online) {
+          await queuePendingUpdate(noteId, patch);
+          const merged = notes?.find((n) => n._id === noteId);
+          if (merged) await cacheNote({ ...merged, ...patch });
+          setNotes((prev) => prev?.map((n) => (n._id === noteId ? { ...n, ...patch } : n)) ?? null);
+          return;
+        }
+        const { note } = await api.notes.update(noteId, patch);
+        knownVersion.current[noteId] = note.updatedAt;
+        await cacheNote(note);
+        setNotes((prev) => prev?.map((n) => (n._id === noteId ? note : n)) ?? null);
+      } catch {
+        // Network hiccup mid-save — fall back to the offline queue so the edit isn't lost.
         await queuePendingUpdate(noteId, patch);
-        const merged = notes?.find((n) => n._id === noteId);
-        if (merged) await cacheNote({ ...merged, ...patch });
-        setNotes((prev) => prev?.map((n) => (n._id === noteId ? { ...n, ...patch } : n)) ?? null);
-        return;
+      } finally {
+        setSaving(false);
       }
-      const { note } = await api.notes.update(noteId, patch);
-      knownVersion.current[noteId] = note.updatedAt;
-      await cacheNote(note);
-      setNotes((prev) => prev?.map((n) => (n._id === noteId ? note : n)) ?? null);
-    } catch {
-      // Network hiccup mid-save — fall back to the offline queue so the edit isn't lost.
-      await queuePendingUpdate(noteId, patch);
-    } finally {
-      setSaving(false);
-    }
-  }, 600);
+    },
+    [online, notes]
+  );
+
+  // Merges into whatever's already pending for this note rather than
+  // replacing it, and debounces per note — editing the title then the
+  // content (or switching notes) within the debounce window no longer
+  // silently drops one of the changes.
+  const persist = useCallback(
+    (noteId: string, patch: { title?: string; content?: string; fontFamily?: string }) => {
+      pendingPatchRef.current[noteId] = { ...pendingPatchRef.current[noteId], ...patch };
+      if (saveTimersRef.current[noteId]) clearTimeout(saveTimersRef.current[noteId]);
+      saveTimersRef.current[noteId] = setTimeout(() => void flushPersist(noteId), 600);
+    },
+    [flushPersist]
+  );
+
+  // Don't lose the last debounce window's edits if the user navigates away
+  // from Notes entirely while a save is still pending. Reads flushPersist
+  // via a ref so this only runs its cleanup on true unmount — flushPersist
+  // itself gets a new identity on every successful save (it depends on
+  // `notes`), and an empty-deps effect would otherwise re-fire constantly.
+  const flushPersistRef = useRef(flushPersist);
+  flushPersistRef.current = flushPersist;
+  useEffect(() => {
+    return () => {
+      for (const noteId of Object.keys(saveTimersRef.current)) {
+        clearTimeout(saveTimersRef.current[noteId]);
+        void flushPersistRef.current(noteId);
+      }
+    };
+  }, []);
 
   const onChangeTitle = (value: string) => {
     lastLocalEditAt.current = Date.now();

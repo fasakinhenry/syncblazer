@@ -105,6 +105,7 @@ interface DeviceInfo {
   name: string;
   type: Device["type"];
   platform: Device["platform"];
+  installId?: string;
 }
 
 export const api = {
@@ -200,6 +201,13 @@ export const api = {
       return apiFetch<{ key: string; url: string }>("/note-images", { method: "POST", body: formData });
     },
     absoluteUrl: (relativeUrl: string) => `${SERVER_ORIGIN}${relativeUrl}`,
+  },
+
+  users: {
+    getPublic: (userId: string) =>
+      apiFetch<{ user: { id: string; name: string; avatarUrl?: string; isGuest: boolean } }>(`/users/${userId}`, {
+        skipAuth: true,
+      }),
   },
 
   linkPreview: {
