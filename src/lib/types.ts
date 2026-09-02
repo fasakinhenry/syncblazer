@@ -51,7 +51,7 @@ export interface Note {
   content: string;
   fontFamily: string;
   visibility: NoteVisibility;
-  publicShare?: { enabled: boolean; token?: string };
+  publicShare?: { enabled: boolean; token?: string; viewCount?: number; lastViewedAt?: string };
   createdAt: string;
   updatedAt: string;
 }
@@ -134,4 +134,35 @@ export interface User {
   isGuest: boolean;
   defaultRoomId?: string;
   preferences: UserPreferences;
+}
+
+export interface TrendPoint {
+  date: string;
+  count: number;
+}
+
+export interface AdminOverview {
+  users: { total: number; guest: number; google: number; password: number };
+  notes: { total: number; public: number };
+  rooms: { total: number };
+  devices: { total: number };
+  transfers: { total: number; completed: number };
+  visits: { last24h: number; last7d: number; last30d: number; allTime: number; uniqueLast30d: number };
+  signupTrend: TrendPoint[];
+  visitTrend: TrendPoint[];
+}
+
+export interface AdminUser {
+  id: string;
+  name: string;
+  email?: string;
+  authProvider: AuthProvider;
+  avatarUrl?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminUserDetail {
+  user: AdminUser;
+  counts: { notes: number; rooms: number; devices: number; transfers: number };
 }

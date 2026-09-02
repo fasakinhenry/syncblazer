@@ -30,6 +30,7 @@
     "@tiptap/pm": "^3.30.6",
     "@tiptap/react": "^3.30.6",
     "@tiptap/starter-kit": "^3.30.6",
+    "@vercel/analytics": "^2.0.1",
     "idb-keyval": "^6.3.0",
     "motion": "^13.1.1",
     "qr-scanner": "^1.4.2",
@@ -38,6 +39,7 @@
     "react-confetti": "^6.4.0",
     "react-dom": "^19.2.8",
     "react-router-dom": "^7.18.3",
+    "recharts": "^3.10.1",
     "socket.io-client": "^4.8.3",
     "tiptap-markdown": "^0.9.0",
     "vercel": "^59.10.0"

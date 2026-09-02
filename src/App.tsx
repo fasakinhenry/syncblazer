@@ -1,5 +1,6 @@
 import { lazy, Suspense } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { Analytics } from "@vercel/analytics/react";
 import { AuthProvider } from "@/context/AuthContext.tsx";
 import { ThemeProvider } from "@/context/ThemeContext.tsx";
 import { ToastProvider } from "@/context/ToastContext.tsx";
@@ -7,9 +8,10 @@ import { SocketProvider } from "@/context/SocketContext.tsx";
 import { RoomProvider } from "@/context/RoomContext.tsx";
 import { PeerTransferProvider } from "@/context/PeerTransferContext.tsx";
 import { LocalSessionProvider } from "@/context/LocalSessionContext.tsx";
-import { ProtectedRoute, GuestRoute, PublicRoute } from "@/components/ProtectedRoute.tsx";
+import { ProtectedRoute, GuestRoute, PublicRoute, AdminRoute } from "@/components/ProtectedRoute.tsx";
 import { AppShell } from "@/components/layout/AppShell.tsx";
 import { PwaUpdatePrompt } from "@/components/PwaUpdatePrompt.tsx";
+import { AnalyticsBeacon } from "@/components/AnalyticsBeacon.tsx";
 import { PageSpinner } from "@/components/ui/Spinner.tsx";
 import { LandingPage } from "@/pages/landing/LandingPage.tsx";
 import { PublicNotePage } from "@/pages/PublicNotePage.tsx";
@@ -26,10 +28,12 @@ const QuickBlazePage = lazy(() => import("@/pages/QuickBlazePage.tsx").then((m) 
 const DevicesPage = lazy(() => import("@/pages/DevicesPage.tsx").then((m) => ({ default: m.DevicesPage })));
 const TransfersPage = lazy(() => import("@/pages/TransfersPage.tsx").then((m) => ({ default: m.TransfersPage })));
 const ProfilePage = lazy(() => import("@/pages/ProfilePage.tsx").then((m) => ({ default: m.ProfilePage })));
+const AdminPage = lazy(() => import("@/pages/admin/AdminPage.tsx").then((m) => ({ default: m.AdminPage })));
 
 export default function App() {
   return (
     <ThemeProvider>
+      <Analytics />
       <ToastProvider>
         <BrowserRouter>
           <AuthProvider>
@@ -113,6 +117,16 @@ export default function App() {
                             </Suspense>
                           }
                         />
+                        <Route element={<AdminRoute />}>
+                          <Route
+                            path="/admin"
+                            element={
+                              <Suspense fallback={<PageSpinner />}>
+                                <AdminPage />
+                              </Suspense>
+                            }
+                          />
+                        </Route>
                       </Route>
                     </Route>
 
@@ -122,6 +136,7 @@ export default function App() {
                     <Route path="/404" element={<NotFoundPage />} />
                     <Route path="*" element={<Navigate to="/404" replace />} />
                   </Routes>
+                  <AnalyticsBeacon />
                   <PwaUpdatePrompt />
                   </LocalSessionProvider>
                 </PeerTransferProvider>

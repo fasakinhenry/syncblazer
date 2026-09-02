@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/Button.tsx";
 import { Toggle } from "@/components/ui/Toggle.tsx";
 import { useToast } from "@/context/ToastContext.tsx";
 import { api, ApiClientError } from "@/lib/api.ts";
+import { formatRelativeTime } from "@/lib/format.ts";
 import type { Note, NoteVisibility } from "@/lib/types.ts";
 
 interface ShareNoteModalProps {
@@ -116,6 +117,12 @@ export function ShareNoteModal({ open, onClose, note, roomName, onUpdated }: Sha
                 {copied ? "Copied" : "Copy"}
               </Button>
             </div>
+          )}
+          {note.publicShare?.enabled && (
+            <p className="mt-2 text-xs text-text-secondary">
+              {note.publicShare.viewCount ?? 0} view{note.publicShare.viewCount === 1 ? "" : "s"}
+              {note.publicShare.lastViewedAt ? ` · last viewed ${formatRelativeTime(note.publicShare.lastViewedAt)}` : ""}
+            </p>
           )}
         </div>
       </div>

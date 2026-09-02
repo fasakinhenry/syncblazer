@@ -1,4 +1,19 @@
-import type { Activity, Device, Note, NoteVisibility, PublicNote, Room, RoomMember, Transfer, User } from "@/lib/types.ts";
+import type {
+  Activity,
+  AdminOverview,
+  AdminUser,
+  AdminUserDetail,
+  AuthProvider,
+  Device,
+  Note,
+  NoteVisibility,
+  PublicNote,
+  Room,
+  RoomMember,
+  Transfer,
+  TrendPoint,
+  User,
+} from "@/lib/types.ts";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:4000/api";
 const SERVER_ORIGIN = API_URL.replace(/\/api\/?$/, "");
@@ -291,6 +306,53 @@ export const api = {
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       });
       if (!res.ok) throw new ApiClientError(res.status, "Couldn't download this file");
+      return res.blob();
+    },
+  },
+
+  analytics: {
+    // Fire-and-forget: a failed pageview beacon should never disrupt the
+    // actual page. Includes the access token if present so a logged-in
+    // visit gets tagged with a userId, but works fine anonymously too.
+    pageview: (input: { path: string; referrer?: string; sessionId: string }) => {
+      const token = tokenStore.getAccessToken();
+      fetch(`${API_URL}/analytics/pageview`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(input),
+        keepalive: true,
+      }).catch(() => undefined);
+    },
+  },
+
+  admin: {
+    overview: () => apiFetch<AdminOverview>("/admin/overview"),
+    visitTrend: (days = 30) => apiFetch<{ trend: TrendPoint[] }>(`/admin/visits?days=${days}`),
+    listUsers: (params: { search?: string; authProvider?: AuthProvider; page?: number; limit?: number }) => {
+      const query = new URLSearchParams(
+        Object.entries(params).filter(([, v]) => v !== undefined) as [string, string][]
+      ).toString();
+      return apiFetch<{ users: AdminUser[]; total: number; page: number; limit: number; totalPages: number }>(
+        `/admin/users${query ? `?${query}` : ""}`
+      );
+    },
+    getUser: (userId: string) => apiFetch<AdminUserDetail>(`/admin/users/${userId}`),
+    updateUser: (userId: string, input: { name?: string; email?: string }) =>
+      apiFetch<{ user: AdminUser }>(`/admin/users/${userId}`, { method: "PATCH", body: input }),
+    deleteUser: (userId: string) => apiFetch<{ deleted: boolean }>(`/admin/users/${userId}`, { method: "DELETE" }),
+    resetUserSessions: (userId: string) =>
+      apiFetch<{ user: AdminUser }>(`/admin/users/${userId}/reset-sessions`, { method: "POST" }),
+    emailUser: (userId: string, input: { subject: string; message: string }) =>
+      apiFetch<{ sent: boolean }>(`/admin/users/${userId}/email`, { method: "POST", body: input }),
+    downloadUsersCsv: async (): Promise<Blob> => {
+      const token = tokenStore.getAccessToken();
+      const res = await fetch(`${API_URL}/admin/users/export.csv`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      if (!res.ok) throw new ApiClientError(res.status, "Couldn't export users");
       return res.blob();
     },
   },
