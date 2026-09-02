@@ -6,9 +6,15 @@ interface ModalProps {
   onClose: () => void;
   title: string;
   children: ReactNode;
+  size?: "md" | "lg";
 }
 
-export function Modal({ open, onClose, title, children }: ModalProps) {
+const SIZE_CLASSES: Record<"md" | "lg", string> = {
+  md: "max-w-md",
+  lg: "max-w-2xl",
+};
+
+export function Modal({ open, onClose, title, children, size = "md" }: ModalProps) {
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (e: KeyboardEvent) => {
@@ -31,7 +37,7 @@ export function Modal({ open, onClose, title, children }: ModalProps) {
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-title"
-        className="relative w-full max-w-md rounded-xl border border-border bg-surface p-6 shadow-xl"
+        className={`relative w-full ${SIZE_CLASSES[size]} max-h-[85vh] overflow-y-auto rounded-xl border border-border bg-surface p-6 shadow-xl`}
       >
         <div className="mb-4 flex items-center justify-between">
           <h2 id="modal-title" className="text-lg font-semibold text-text-primary">

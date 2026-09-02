@@ -79,8 +79,9 @@ export interface Transfer {
   _id: string;
   roomId: string;
   ownerId: string;
-  senderDeviceId: Device | string;
-  receiverDeviceId: Device | string;
+  // null when populated and the referenced device has since been deleted.
+  senderDeviceId: Device | string | null;
+  receiverDeviceId: Device | string | null;
   type: TransferType;
   name: string;
   size: number;
@@ -160,9 +161,59 @@ export interface AdminUser {
   avatarUrl?: string;
   createdAt: string;
   updatedAt: string;
+  lastLoginAt?: string;
+}
+
+export interface AdminDevice {
+  _id: string;
+  name: string;
+  type: DeviceType;
+  platform: DevicePlatform;
+  status: DeviceStatus;
+  lastSeenAt: string;
+}
+
+export interface AdminRoom {
+  _id: string;
+  name: string;
+  type: RoomType;
+  isDefault: boolean;
+  createdAt: string;
+}
+
+export interface AdminNote {
+  _id: string;
+  title: string;
+  visibility: NoteVisibility;
+  publicShare?: { enabled: boolean; viewCount?: number };
+  updatedAt: string;
+}
+
+export interface AdminTransfer {
+  _id: string;
+  name: string;
+  type: Transfer["type"];
+  status: Transfer["status"];
+  transferMethod: Transfer["transferMethod"];
+  size: number;
+  createdAt: string;
+  senderDeviceId: Device | string | null;
+  receiverDeviceId: Device | string | null;
+}
+
+export interface AdminActivityItem {
+  _id: string;
+  type: ActivityType;
+  message: string;
+  createdAt: string;
 }
 
 export interface AdminUserDetail {
   user: AdminUser;
-  counts: { notes: number; rooms: number; devices: number; transfers: number };
+  counts: { notes: number; rooms: number; devices: number; transfers: number; publicNotes: number; completedBytes: number };
+  devices: AdminDevice[];
+  rooms: AdminRoom[];
+  recentNotes: AdminNote[];
+  recentTransfers: AdminTransfer[];
+  recentActivity: AdminActivityItem[];
 }

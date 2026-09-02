@@ -170,7 +170,11 @@ export function AdminPage() {
                   <p className="truncate text-xs text-text-secondary">{u.email ?? "No email"}</p>
                 </div>
                 <Badge tone={PROVIDER_TONE[u.authProvider]}>{PROVIDER_LABEL[u.authProvider]}</Badge>
-                <span className="hidden shrink-0 text-xs text-text-secondary sm:block">{formatRelativeTime(u.createdAt)}</span>
+                <span className="hidden shrink-0 text-right text-xs text-text-secondary sm:block">
+                  Joined {formatRelativeTime(u.createdAt)}
+                  <br />
+                  {u.lastLoginAt ? `Active ${formatRelativeTime(u.lastLoginAt)}` : "Never signed in again"}
+                </span>
               </button>
             ))
           )}

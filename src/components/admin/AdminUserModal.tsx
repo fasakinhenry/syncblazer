@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { EnvelopeSimple, SignOut, Trash } from "@phosphor-icons/react";
+import { EnvelopeSimple, Globe, Lock, SignOut, Trash, WifiHigh, CloudArrowUp } from "@phosphor-icons/react";
 import { Modal } from "@/components/ui/Modal.tsx";
 import { Button } from "@/components/ui/Button.tsx";
 import { Input } from "@/components/ui/Input.tsx";
@@ -7,8 +7,15 @@ import { Badge } from "@/components/ui/Badge.tsx";
 import { Spinner } from "@/components/ui/Spinner.tsx";
 import { useToast } from "@/context/ToastContext.tsx";
 import { api, ApiClientError } from "@/lib/api.ts";
-import { formatRelativeTime } from "@/lib/format.ts";
+import { formatBytes, formatRelativeTime } from "@/lib/format.ts";
+import { DEVICE_TYPE_ICON } from "@/components/devices/deviceIcons.tsx";
+import { STATUS_LABEL, STATUS_TONE } from "@/components/transfers/statusMeta.ts";
 import type { AdminUserDetail } from "@/lib/types.ts";
+
+function transferDeviceName(d: AdminUserDetail["recentTransfers"][number]["senderDeviceId"]): string {
+  if (!d) return "Deleted device";
+  return typeof d === "string" ? "Device" : d.name;
+}
 
 interface AdminUserModalProps {
   userId: string | null;
@@ -105,25 +112,30 @@ export function AdminUserModal({ userId, onClose, onChanged }: AdminUserModalPro
   };
 
   return (
-    <Modal open onClose={onClose} title="User details">
+    <Modal open onClose={onClose} title="User details" size="lg">
       {!detail ? (
         <div className="flex justify-center py-8">
           <Spinner className="h-6 w-6" />
         </div>
       ) : (
         <div className="flex flex-col gap-4">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Badge tone="neutral">{PROVIDER_LABEL[detail.user.authProvider]}</Badge>
             <span className="text-xs text-text-secondary">Joined {formatRelativeTime(detail.user.createdAt)}</span>
+            <span className="text-xs text-text-secondary">
+              · Last active {detail.user.lastLoginAt ? formatRelativeTime(detail.user.lastLoginAt) : "never (pre-dates tracking)"}
+            </span>
           </div>
 
-          <div className="grid grid-cols-4 gap-2 text-center">
+          <div className="grid grid-cols-3 gap-2 text-center sm:grid-cols-6">
             {(
               [
                 ["Notes", detail.counts.notes],
+                ["Public", detail.counts.publicNotes],
                 ["Rooms", detail.counts.rooms],
                 ["Devices", detail.counts.devices],
                 ["Transfers", detail.counts.transfers],
+                ["Sent", formatBytes(detail.counts.completedBytes)],
               ] as const
             ).map(([label, value]) => (
               <div key={label} className="rounded-lg border border-border p-2">
@@ -149,6 +161,104 @@ export function AdminUserModal({ userId, onClose, onChanged }: AdminUserModalPro
               Save changes
             </Button>
           </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <section className="flex flex-col gap-1.5">
+              <h3 className="text-xs font-semibold text-text-secondary">Devices ({detail.devices.length})</h3>
+              {detail.devices.length === 0 ? (
+                <p className="text-xs text-text-secondary">None yet.</p>
+              ) : (
+                <div className="flex max-h-40 flex-col gap-1 overflow-y-auto">
+                  {detail.devices.map((d) => {
+                    const Icon = DEVICE_TYPE_ICON[d.type];
+                    return (
+                      <div key={d._id} className="flex items-center gap-2 rounded-md border border-border px-2 py-1.5 text-xs">
+                        <Icon className="h-3.5 w-3.5 shrink-0 text-text-secondary" />
+                        <span className="flex-1 truncate text-text-primary">{d.name}</span>
+                        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${d.status === "online" ? "bg-success" : "bg-text-secondary/40"}`} />
+                        <span className="shrink-0 text-text-secondary">{formatRelativeTime(d.lastSeenAt)}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+
+            <section className="flex flex-col gap-1.5">
+              <h3 className="text-xs font-semibold text-text-secondary">Rooms ({detail.rooms.length})</h3>
+              {detail.rooms.length === 0 ? (
+                <p className="text-xs text-text-secondary">None yet.</p>
+              ) : (
+                <div className="flex max-h-40 flex-col gap-1 overflow-y-auto">
+                  {detail.rooms.map((r) => (
+                    <div key={r._id} className="flex items-center gap-2 rounded-md border border-border px-2 py-1.5 text-xs">
+                      <span className="flex-1 truncate text-text-primary">{r.name}</span>
+                      {r.isDefault && <Badge tone="brand">Default</Badge>}
+                      <span className="shrink-0 text-text-secondary">{formatRelativeTime(r.createdAt)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <section className="flex flex-col gap-1.5">
+              <h3 className="text-xs font-semibold text-text-secondary">Recent notes ({detail.recentNotes.length})</h3>
+              {detail.recentNotes.length === 0 ? (
+                <p className="text-xs text-text-secondary">None yet.</p>
+              ) : (
+                <div className="flex max-h-40 flex-col gap-1 overflow-y-auto">
+                  {detail.recentNotes.map((n) => (
+                    <div key={n._id} className="flex items-center gap-2 rounded-md border border-border px-2 py-1.5 text-xs">
+                      {n.publicShare?.enabled ? (
+                        <Globe className="h-3.5 w-3.5 shrink-0 text-text-secondary" />
+                      ) : (
+                        <Lock className="h-3.5 w-3.5 shrink-0 text-text-secondary" />
+                      )}
+                      <span className="flex-1 truncate text-text-primary">{n.title || "Untitled note"}</span>
+                      <span className="shrink-0 text-text-secondary">{formatRelativeTime(n.updatedAt)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <section className="flex flex-col gap-1.5">
+              <h3 className="text-xs font-semibold text-text-secondary">Recent transfers ({detail.recentTransfers.length})</h3>
+              {detail.recentTransfers.length === 0 ? (
+                <p className="text-xs text-text-secondary">None yet.</p>
+              ) : (
+                <div className="flex max-h-40 flex-col gap-1 overflow-y-auto">
+                  {detail.recentTransfers.map((t) => (
+                    <div key={t._id} className="flex items-center gap-2 rounded-md border border-border px-2 py-1.5 text-xs">
+                      {t.transferMethod === "local" ? (
+                        <WifiHigh className="h-3.5 w-3.5 shrink-0 text-text-secondary" />
+                      ) : (
+                        <CloudArrowUp className="h-3.5 w-3.5 shrink-0 text-text-secondary" />
+                      )}
+                      <span className="flex-1 truncate text-text-primary" title={`${transferDeviceName(t.senderDeviceId)} → ${transferDeviceName(t.receiverDeviceId)}`}>
+                        {t.name}
+                      </span>
+                      <Badge tone={STATUS_TONE[t.status]}>{STATUS_LABEL[t.status]}</Badge>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          </div>
+
+          {detail.recentActivity.length > 0 && (
+            <section className="flex flex-col gap-1.5">
+              <h3 className="text-xs font-semibold text-text-secondary">Recent activity</h3>
+              <div className="flex max-h-32 flex-col gap-1 overflow-y-auto">
+                {detail.recentActivity.map((a) => (
+                  <div key={a._id} className="flex items-center gap-2 rounded-md border border-border px-2 py-1.5 text-xs">
+                    <span className="flex-1 truncate text-text-primary">{a.message}</span>
+                    <span className="shrink-0 text-text-secondary">{formatRelativeTime(a.createdAt)}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
 
           {emailMode ? (
             <div className="flex flex-col gap-2 rounded-lg border border-border p-3">

@@ -129,7 +129,10 @@ export function PeerTransferProvider({ children }: { children: ReactNode }) {
         {
           id: transfer._id,
           meta,
-          fromDeviceId: typeof transfer.senderDeviceId === "string" ? transfer.senderDeviceId : transfer.senderDeviceId._id,
+          fromDeviceId:
+            typeof transfer.senderDeviceId === "string"
+              ? transfer.senderDeviceId
+              : (transfer.senderDeviceId?._id ?? ""),
           bytesTransferred: transfer.size,
           status: "completed",
           method: "cloud",

@@ -26,7 +26,12 @@ const FILTERS: { label: string; value: TransferType | "all" }[] = [
   { label: "Links", value: "link" },
 ];
 
-function deviceName(d: Device | string): string {
+function deviceName(d: Device | string | null | undefined): string {
+  // A transfer can outlive the device it named — the device may since have
+  // been removed (by the user, or an admin deleting the account) — and a
+  // populated reference to a gone document comes back as null, not a
+  // string id. Transfer history should still render, just say so.
+  if (!d) return "Deleted device";
   return typeof d === "string" ? "Device" : d.name;
 }
 
