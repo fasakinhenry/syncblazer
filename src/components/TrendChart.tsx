@@ -1,3 +1,4 @@
+import { useId } from "react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { TrendPoint } from "@/lib/types.ts";
 
@@ -6,22 +7,24 @@ function formatShortDate(iso: string): string {
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-interface AdminTrendChartProps {
+interface TrendChartProps {
   data: TrendPoint[];
   label: string;
+  color?: string;
 }
 
-export function AdminTrendChart({ data, label }: AdminTrendChartProps) {
+export function TrendChart({ data, label, color = "#287bff" }: TrendChartProps) {
   const chartData = data.map((d) => ({ ...d, label: formatShortDate(d.date) }));
+  const gradientId = `trend-fill-${useId()}`;
 
   return (
     <div className="h-56 w-full">
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={chartData} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
           <defs>
-            <linearGradient id="admin-trend-fill" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#287bff" stopOpacity={0.25} />
-              <stop offset="100%" stopColor="#287bff" stopOpacity={0} />
+            <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={color} stopOpacity={0.25} />
+              <stop offset="100%" stopColor={color} stopOpacity={0} />
             </linearGradient>
           </defs>
           <CartesianGrid vertical={false} stroke="currentColor" className="text-border" strokeOpacity={0.6} />
@@ -42,7 +45,7 @@ export function AdminTrendChart({ data, label }: AdminTrendChartProps) {
             allowDecimals={false}
           />
           <Tooltip
-            cursor={{ stroke: "#287bff", strokeOpacity: 0.3 }}
+            cursor={{ stroke: color, strokeOpacity: 0.3 }}
             contentStyle={{
               background: "var(--color-surface)",
               border: "1px solid var(--color-border)",
@@ -53,7 +56,7 @@ export function AdminTrendChart({ data, label }: AdminTrendChartProps) {
             labelFormatter={(v) => v}
             formatter={(value) => [value, label]}
           />
-          <Area type="monotone" dataKey="count" stroke="#287bff" strokeWidth={2} fill="url(#admin-trend-fill)" />
+          <Area type="monotone" dataKey="count" stroke={color} strokeWidth={2} fill={`url(#${gradientId})`} />
         </AreaChart>
       </ResponsiveContainer>
     </div>

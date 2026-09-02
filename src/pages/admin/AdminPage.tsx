@@ -12,7 +12,7 @@ import { api } from "@/lib/api.ts";
 import type { AdminOverview, AdminUser, AuthProvider } from "@/lib/types.ts";
 import { formatRelativeTime } from "@/lib/format.ts";
 import { AdminStatCard } from "@/components/admin/AdminStatCard.tsx";
-import { AdminTrendChart } from "@/components/admin/AdminTrendChart.tsx";
+import { TrendChart } from "@/components/TrendChart.tsx";
 import { AdminUserModal } from "@/components/admin/AdminUserModal.tsx";
 import { Card } from "@/components/ui/Card.tsx";
 import { Input } from "@/components/ui/Input.tsx";
@@ -124,11 +124,11 @@ export function AdminPage() {
       <section className="grid gap-4 md:grid-cols-2">
         <Card className="p-4">
           <h2 className="mb-2 text-sm font-semibold text-text-secondary">Visits — last 30 days</h2>
-          <AdminTrendChart data={overview.visitTrend} label="Visits" />
+          <TrendChart data={overview.visitTrend} label="Visits" />
         </Card>
         <Card className="p-4">
           <h2 className="mb-2 text-sm font-semibold text-text-secondary">Signups — last 30 days</h2>
-          <AdminTrendChart data={overview.signupTrend} label="Signups" />
+          <TrendChart data={overview.signupTrend} label="Signups" />
         </Card>
       </section>
 

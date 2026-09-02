@@ -217,3 +217,19 @@ export interface AdminUserDetail {
   recentTransfers: AdminTransfer[];
   recentActivity: AdminActivityItem[];
 }
+
+export interface MyStats {
+  counts: {
+    notes: number;
+    publicNotes: number;
+    rooms: number;
+    devices: number;
+    transfers: number;
+    sentBytes: number;
+    publicViews: number;
+  };
+  transfersByType: Partial<Record<Transfer["type"], number>>;
+  transfersByMethod: Partial<Record<Transfer["transferMethod"], number>>;
+  transferTrend: TrendPoint[];
+  noteTrend: TrendPoint[];
+}

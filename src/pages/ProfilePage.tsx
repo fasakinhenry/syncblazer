@@ -6,8 +6,11 @@ import { useRooms } from "@/context/RoomContext.tsx";
 import { useTheme } from "@/context/ThemeContext.tsx";
 import { useToast } from "@/context/ToastContext.tsx";
 import { api } from "@/lib/api.ts";
+import { formatBytes } from "@/lib/format.ts";
+import type { MyStats } from "@/lib/types.ts";
 import { Avatar } from "@/components/Avatar.tsx";
 import { AvatarPicker } from "@/components/AvatarPicker.tsx";
+import { TrendChart } from "@/components/TrendChart.tsx";
 import { Card } from "@/components/ui/Card.tsx";
 import { Button } from "@/components/ui/Button.tsx";
 import { Input } from "@/components/ui/Input.tsx";
@@ -32,10 +35,13 @@ export function ProfilePage() {
   const [savingName, setSavingName] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
+  const [stats, setStats] = useState<MyStats | null>(null);
+  const [trendView, setTrendView] = useState<"transfers" | "notes">("transfers");
   const photoInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     api.devices.list().then(({ devices }) => setDeviceCount(devices.length));
+    api.auth.myStats().then(setStats);
   }, []);
 
   if (!user) return null;
@@ -124,6 +130,65 @@ export function ProfilePage() {
           <span className="text-xs text-text-secondary">Rooms</span>
         </Card>
       </div>
+
+      {stats && (
+        <Card className="p-4">
+          <p className="mb-3 text-sm font-medium text-text-primary">Your activity</p>
+
+          <div className="grid grid-cols-4 gap-2 text-center">
+            {(
+              [
+                ["Notes", stats.counts.notes],
+                ["Transfers", stats.counts.transfers],
+                ["Sent", formatBytes(stats.counts.sentBytes)],
+                ["Note views", stats.counts.publicViews],
+              ] as const
+            ).map(([label, value]) => (
+              <div key={label} className="rounded-lg border border-border p-2">
+                <div className="text-lg font-semibold text-text-primary">{value}</div>
+                <div className="text-[11px] text-text-secondary">{label}</div>
+              </div>
+            ))}
+          </div>
+
+          {(Object.keys(stats.transfersByType).length > 0 || Object.keys(stats.transfersByMethod).length > 0) && (
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {Object.entries(stats.transfersByType).map(([type, count]) => (
+                <Badge key={type} tone="neutral">
+                  {count} {type}
+                  {count === 1 ? "" : "s"}
+                </Badge>
+              ))}
+              {Object.entries(stats.transfersByMethod).map(([method, count]) => (
+                <Badge key={method} tone={method === "local" ? "success" : "brand"}>
+                  {count} via {method === "local" ? "local network" : "cloud"}
+                </Badge>
+              ))}
+            </div>
+          )}
+
+          <div className="mt-4 flex items-center justify-between">
+            <p className="text-xs font-medium text-text-secondary">Last 30 days</p>
+            <div className="flex gap-1">
+              {(["transfers", "notes"] as const).map((v) => (
+                <button
+                  key={v}
+                  onClick={() => setTrendView(v)}
+                  className={`rounded-full px-2.5 py-1 text-xs font-medium capitalize ${
+                    trendView === v ? "bg-brand text-white" : "bg-surface-hover text-text-secondary"
+                  }`}
+                >
+                  {v}
+                </button>
+              ))}
+            </div>
+          </div>
+          <TrendChart
+            data={trendView === "transfers" ? stats.transferTrend : stats.noteTrend}
+            label={trendView === "transfers" ? "Transfers" : "Notes created"}
+          />
+        </Card>
+      )}
 
       <Card className="p-4">
         <p className="mb-3 text-sm font-medium text-text-primary">Name</p>

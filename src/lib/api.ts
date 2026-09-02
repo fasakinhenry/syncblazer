@@ -5,6 +5,7 @@ import type {
   AdminUserDetail,
   AuthProvider,
   Device,
+  MyStats,
   Note,
   NoteVisibility,
   PublicNote,
@@ -148,6 +149,7 @@ export const api = {
         { method: "POST", body: input, skipAuth: true }
       ),
     me: () => apiFetch<{ user: User }>("/auth/me"),
+    myStats: () => apiFetch<MyStats>("/auth/me/stats"),
     updateMe: (input: { name?: string; avatarUrl?: string }) =>
       apiFetch<{ user: User }>("/auth/me", { method: "PATCH", body: input }),
     deleteAccount: () => apiFetch<{ deleted: boolean }>("/auth/me", { method: "DELETE" }),
