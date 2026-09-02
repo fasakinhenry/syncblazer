@@ -69,5 +69,18 @@ export function useNotesSync(onReconciled: (localId: string, note: Note) => void
     if (online) void flush();
   }, [online, flush]);
 
+  // Safety net beyond the online-transition trigger above: a save can also
+  // fall back to the offline queue while the browser still thinks it's
+  // online (a transient backend hiccup, not a real connectivity change), in
+  // which case `online` never flips and that flush trigger never fires
+  // again. Retry periodically so a stuck item doesn't sit there forever —
+  // callers also call `flush()` directly right after queuing something for
+  // an immediate attempt; this just catches whatever that misses.
+  useEffect(() => {
+    if (pendingCount === 0) return;
+    const interval = setInterval(() => void flush(), 15000);
+    return () => clearInterval(interval);
+  }, [pendingCount, flush]);
+
   return { online, pendingCount, flush };
 }

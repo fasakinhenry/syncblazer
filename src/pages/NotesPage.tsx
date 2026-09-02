@@ -1,15 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
+  CheckSquare,
   CloudArrowUp,
   DownloadSimple,
   FileText,
+  FloppyDisk,
+  Globe,
   MagnifyingGlass,
   Note as NoteIcon,
   Plus,
   ShareNetwork,
+  Square,
   Trash,
   WifiSlash,
+  X,
 } from "@phosphor-icons/react";
 import { api } from "@/lib/api.ts";
 import type { Note } from "@/lib/types.ts";
@@ -57,6 +62,9 @@ export function NotesPage() {
   const [shareOpen, setShareOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [remountKey, setRemountKey] = useState(0);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const lastLocalEditAt = useRef(0);
   // Version we last saved or applied per note, so an echo of our own save
@@ -70,6 +78,16 @@ export function NotesPage() {
   // font change (and the same for switching notes mid-debounce).
   const pendingPatchRef = useRef<Record<string, { title?: string; content?: string; fontFamily?: string }>>({});
   const saveTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  // Only ever one save request in flight per note. Without this, two lulls
+  // in typing close together can fire two overlapping PATCH requests for
+  // the same note, and if the network reorders their responses the OLDER
+  // one can land last and silently overwrite newer content. A queued
+  // rerun (using whatever's freshly merged into pendingPatchRef by then)
+  // replaces the second request instead of racing it.
+  const inFlightRef = useRef<Record<string, boolean>>({});
+  const rerunRef = useRef<Record<string, boolean>>({});
+  const notesRef = useRef<Note[] | null>(null);
+  notesRef.current = notes;
 
   const selected = useMemo(() => notes?.find((n) => n._id === selectedId) ?? null, [notes, selectedId]);
   const selectedRoom = useMemo(() => rooms.find((r) => r._id === selected?.roomId), [rooms, selected]);
@@ -79,7 +97,7 @@ export function NotesPage() {
     setSelectedId((prev) => (prev === localId ? note._id : prev));
   }, []);
 
-  const { online, pendingCount } = useNotesSync(reconcileLocalNote);
+  const { online, pendingCount, flush: syncFlush } = useNotesSync(reconcileLocalNote);
 
   const load = useCallback(async () => {
     try {
@@ -144,26 +162,51 @@ export function NotesPage() {
     return () => document.removeEventListener("mousedown", onClick);
   }, [exportOpen]);
 
+  // Deliberately keyed on selectedId, not on `selected` (which gets a new
+  // object reference on every notes-array mutation, including the echo of
+  // our OWN save landing back in state). Depending on `selected` meant this
+  // effect fired after every autosave too — and if the user had typed more
+  // while that save's request was still in flight, it would stomp the
+  // editor's draft state back to the older, just-saved value, discarding
+  // keystrokes that happened in between. Only actually switching notes
+  // should reinitialize the draft from stored state.
   useEffect(() => {
-    setDraftTitle(selected?.title ?? "");
-    setDraftContent(selected?.content ?? "");
-    setDraftFont(selected?.fontFamily ?? DEFAULT_NOTE_FONT);
-  }, [selected]);
+    const note = notesRef.current?.find((n) => n._id === selectedId) ?? null;
+    setDraftTitle(note?.title ?? "");
+    setDraftContent(note?.content ?? "");
+    setDraftFont(note?.fontFamily ?? DEFAULT_NOTE_FONT);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId]);
 
   const flushPersist = useCallback(
     async (noteId: string) => {
+      if (saveTimersRef.current[noteId]) {
+        clearTimeout(saveTimersRef.current[noteId]);
+        delete saveTimersRef.current[noteId];
+      }
+
+      // A save for this note is already in flight — don't fire a second,
+      // overlapping request (that's how an older response can land after a
+      // newer one and clobber it). Ask that request to run again once it's
+      // done instead, picking up whatever's freshly merged by then.
+      if (inFlightRef.current[noteId]) {
+        rerunRef.current[noteId] = true;
+        return;
+      }
+
       const patch = pendingPatchRef.current[noteId];
       if (!patch) return;
       delete pendingPatchRef.current[noteId];
-      delete saveTimersRef.current[noteId];
 
+      inFlightRef.current[noteId] = true;
       setSaving(true);
       try {
         if (!online) {
           await queuePendingUpdate(noteId, patch);
-          const merged = notes?.find((n) => n._id === noteId);
-          if (merged) await cacheNote({ ...merged, ...patch });
           setNotes((prev) => prev?.map((n) => (n._id === noteId ? { ...n, ...patch } : n)) ?? null);
+          const merged = notesRef.current?.find((n) => n._id === noteId);
+          if (merged) await cacheNote({ ...merged, ...patch });
+          void syncFlush();
           return;
         }
         const { note } = await api.notes.update(noteId, patch);
@@ -173,11 +216,17 @@ export function NotesPage() {
       } catch {
         // Network hiccup mid-save — fall back to the offline queue so the edit isn't lost.
         await queuePendingUpdate(noteId, patch);
+        void syncFlush();
       } finally {
+        inFlightRef.current[noteId] = false;
         setSaving(false);
+        if (rerunRef.current[noteId]) {
+          rerunRef.current[noteId] = false;
+          void flushPersist(noteId);
+        }
       }
     },
-    [online, notes]
+    [online, syncFlush]
   );
 
   // Merges into whatever's already pending for this note rather than
@@ -195,19 +244,47 @@ export function NotesPage() {
 
   // Don't lose the last debounce window's edits if the user navigates away
   // from Notes entirely while a save is still pending. Reads flushPersist
-  // via a ref so this only runs its cleanup on true unmount — flushPersist
-  // itself gets a new identity on every successful save (it depends on
-  // `notes`), and an empty-deps effect would otherwise re-fire constantly.
+  // via a ref so this only runs its cleanup on true unmount.
   const flushPersistRef = useRef(flushPersist);
   flushPersistRef.current = flushPersist;
+
+  const flushAllPending = useCallback(() => {
+    for (const noteId of Object.keys(pendingPatchRef.current)) {
+      void flushPersistRef.current(noteId);
+    }
+  }, []);
+
   useEffect(() => {
-    return () => {
-      for (const noteId of Object.keys(saveTimersRef.current)) {
-        clearTimeout(saveTimersRef.current[noteId]);
-        void flushPersistRef.current(noteId);
+    return () => flushAllPending();
+  }, [flushAllPending]);
+
+  // Extra safety net beyond unmount: a backgrounded tab (switching apps on
+  // mobile, minimizing) still has time to finish an async save, so flush
+  // there proactively. An actual close/refresh doesn't reliably give async
+  // work time to finish at all, so that path instead warns before it
+  // happens via the native "leave site?" prompt rather than racing a save
+  // against the unload.
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") flushAllPending();
+    };
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (Object.keys(pendingPatchRef.current).length > 0 || Object.values(inFlightRef.current).some(Boolean)) {
+        e.preventDefault();
+        e.returnValue = "";
       }
     };
-  }, []);
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("beforeunload", onBeforeUnload);
+    };
+  }, [flushAllPending]);
+
+  const saveNow = () => {
+    if (selectedId) void flushPersist(selectedId);
+  };
 
   const onChangeTitle = (value: string) => {
     lastLocalEditAt.current = Date.now();
@@ -250,6 +327,7 @@ export function NotesPage() {
       setNotes((prev) => (prev ? [localNote, ...prev] : [localNote]));
       setSelectedId(localId);
       toast("Saved locally — will sync once you're back online", "info");
+      void syncFlush();
       return;
     }
     const { note } = await api.notes.create({ roomId: defaultRoom._id, title: "Untitled note" });
@@ -266,16 +344,91 @@ export function NotesPage() {
 
     if (isLocalNoteId(noteId)) {
       await queuePendingDelete(noteId);
+      void syncFlush();
       return;
     }
     if (!online) {
       await queuePendingDelete(noteId);
+      void syncFlush();
       return;
     }
     try {
       await api.notes.remove(noteId);
     } catch {
       await queuePendingDelete(noteId);
+      void syncFlush();
+    }
+  };
+
+  const toggleSelectionMode = () => {
+    setSelectionMode((v) => !v);
+    setCheckedIds(new Set());
+  };
+
+  const toggleChecked = (noteId: string) => {
+    setCheckedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(noteId)) next.delete(noteId);
+      else next.add(noteId);
+      return next;
+    });
+  };
+
+  const bulkDelete = async () => {
+    const ids = [...checkedIds];
+    if (ids.length === 0) return;
+    if (!window.confirm(`Delete ${ids.length} note${ids.length === 1 ? "" : "s"}? This can't be undone.`)) return;
+
+    setNotes((prev) => prev?.filter((n) => !checkedIds.has(n._id)) ?? null);
+    if (selectedId && checkedIds.has(selectedId)) setSelectedId(null);
+    setSelectionMode(false);
+    setCheckedIds(new Set());
+    setBulkBusy(true);
+    try {
+      await Promise.allSettled(
+        ids.map(async (id) => {
+          await removeCachedNote(id);
+          if (isLocalNoteId(id) || !online) {
+            await queuePendingDelete(id);
+            return;
+          }
+          try {
+            await api.notes.remove(id);
+          } catch {
+            await queuePendingDelete(id);
+          }
+        })
+      );
+      void syncFlush();
+      toast(`Deleted ${ids.length} note${ids.length === 1 ? "" : "s"}`, "success");
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const bulkSetPublic = async (enabled: boolean) => {
+    const ids = [...checkedIds].filter((id) => !isLocalNoteId(id));
+    if (ids.length === 0) {
+      toast("Nothing selected can be shared yet — sync first", "info");
+      return;
+    }
+    setSelectionMode(false);
+    setCheckedIds(new Set());
+    setBulkBusy(true);
+    try {
+      const results = await Promise.allSettled(ids.map((id) => api.notes.share(id, enabled)));
+      const updated = results
+        .map((r) => (r.status === "fulfilled" ? r.value.note : null))
+        .filter((n): n is Note => !!n);
+      if (updated.length) {
+        await cacheNotes(updated);
+        setNotes((prev) => prev?.map((n) => updated.find((u) => u._id === n._id) ?? n) ?? null);
+      }
+      const failed = results.length - updated.length;
+      if (failed > 0) toast(`${failed} note${failed === 1 ? "" : "s"} couldn't be updated`, "error");
+      else toast(enabled ? "Public links turned on" : "Public links turned off", "success");
+    } finally {
+      setBulkBusy(false);
     }
   };
 
@@ -313,19 +466,55 @@ export function NotesPage() {
       <div className={`flex w-full flex-col gap-4 md:w-80 md:shrink-0 ${selected ? "hidden md:flex" : "flex"}`}>
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-semibold text-text-primary">Notes</h1>
-          <Button size="sm" onClick={createNote} disabled={!defaultRoom} className="gap-1.5">
-            <Plus className="h-4 w-4" />
-            New
-          </Button>
+          <div className="flex gap-1.5">
+            {filteredNotes.length > 0 && (
+              <Button size="sm" variant="ghost" onClick={toggleSelectionMode} className="gap-1.5">
+                {selectionMode ? <X className="h-4 w-4" /> : <CheckSquare className="h-4 w-4" />}
+                {selectionMode ? "Cancel" : "Select"}
+              </Button>
+            )}
+            <Button size="sm" onClick={createNote} disabled={!defaultRoom} className="gap-1.5">
+              <Plus className="h-4 w-4" />
+              New
+            </Button>
+          </div>
         </div>
 
-        {(!online || pendingCount > 0) && (
-          <div className="flex items-center gap-1.5 rounded-lg bg-warning/10 px-3 py-2 text-xs text-warning">
-            {!online ? <WifiSlash className="h-3.5 w-3.5" /> : <CloudArrowUp className="h-3.5 w-3.5" />}
-            {!online
-              ? "Offline — changes are saved on this device and will sync automatically."
-              : `Syncing ${pendingCount} change${pendingCount === 1 ? "" : "s"}…`}
+        {selectionMode ? (
+          <div className="flex items-center justify-between gap-2 rounded-lg border border-border bg-surface px-3 py-2">
+            <span className="text-xs font-medium text-text-secondary">{checkedIds.size} selected</span>
+            <div className="flex gap-1">
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={checkedIds.size === 0 || bulkBusy}
+                onClick={() => bulkSetPublic(true)}
+                className="gap-1"
+                title="Make public"
+              >
+                <Globe className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={checkedIds.size === 0 || bulkBusy}
+                onClick={() => bulkDelete()}
+                className="gap-1 text-danger hover:bg-danger/10"
+                title="Delete selected"
+              >
+                <Trash className="h-3.5 w-3.5" />
+              </Button>
+            </div>
           </div>
+        ) : (
+          (!online || pendingCount > 0) && (
+            <div className="flex items-center gap-1.5 rounded-lg bg-warning/10 px-3 py-2 text-xs text-warning">
+              {!online ? <WifiSlash className="h-3.5 w-3.5" /> : <CloudArrowUp className="h-3.5 w-3.5" />}
+              {!online
+                ? "Offline — changes are saved on this device and will sync automatically."
+                : `Syncing ${pendingCount} change${pendingCount === 1 ? "" : "s"}…`}
+            </div>
+          )
         )}
 
         <div className="relative">
@@ -351,22 +540,35 @@ export function NotesPage() {
             {filteredNotes.map((note) => (
               <button
                 key={note._id}
-                onClick={() => setSelectedId(note._id)}
-                className={`flex flex-col gap-0.5 rounded-lg px-3 py-2.5 text-left transition-colors ${
-                  selectedId === note._id ? "bg-brand-soft" : "hover:bg-surface-hover"
+                onClick={() => (selectionMode ? toggleChecked(note._id) : setSelectedId(note._id))}
+                className={`flex items-center gap-2 rounded-lg px-3 py-2.5 text-left transition-colors ${
+                  selectedId === note._id && !selectionMode ? "bg-brand-soft" : "hover:bg-surface-hover"
                 }`}
               >
-                <span className="flex items-center gap-1.5 truncate font-medium text-text-primary">
-                  {note.title || "Untitled note"}
-                  {isLocalNoteId(note._id) && (
-                    <span className="shrink-0 text-text-secondary" title="Not yet synced">
-                      <CloudArrowUp className="h-3 w-3" />
-                    </span>
-                  )}
-                  {note.visibility === "room" && <Badge tone="brand">Shared</Badge>}
-                </span>
-                <span className="truncate text-xs text-text-secondary">
-                  {markdownToPlainText(note.content).slice(0, 60) || "No content"}
+                {selectionMode &&
+                  (checkedIds.has(note._id) ? (
+                    <CheckSquare className="h-4 w-4 shrink-0 text-brand" />
+                  ) : (
+                    <Square className="h-4 w-4 shrink-0 text-text-secondary" />
+                  ))}
+                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className="flex items-center gap-1.5 truncate font-medium text-text-primary">
+                    {note.title || "Untitled note"}
+                    {isLocalNoteId(note._id) && (
+                      <span className="shrink-0 text-text-secondary" title="Not yet synced">
+                        <CloudArrowUp className="h-3 w-3" />
+                      </span>
+                    )}
+                    {note.visibility === "room" && <Badge tone="brand">Shared</Badge>}
+                    {note.publicShare?.enabled && (
+                      <span className="shrink-0 text-text-secondary" title="Public link on">
+                        <Globe className="h-3 w-3" />
+                      </span>
+                    )}
+                  </span>
+                  <span className="truncate text-xs text-text-secondary">
+                    {markdownToPlainText(note.content).slice(0, 60) || "No content"}
+                  </span>
                 </span>
               </button>
             ))}
@@ -391,7 +593,18 @@ export function NotesPage() {
                 placeholder="Untitled note"
                 className="flex-1 bg-transparent font-display text-lg font-semibold text-text-primary outline-none"
               />
-              <span className="shrink-0 text-xs text-text-secondary">{saving ? "Saving…" : "Saved"}</span>
+              <span className="shrink-0 text-xs text-text-secondary">
+                {saving ? "Saving…" : selectedId && pendingPatchRef.current[selectedId] ? "Unsaved changes" : "Saved"}
+              </span>
+              <button
+                onClick={saveNow}
+                disabled={saving || !selectedId || !pendingPatchRef.current[selectedId]}
+                aria-label="Save now"
+                title="Save now"
+                className="shrink-0 rounded-md p-2 text-text-secondary hover:bg-surface-hover hover:text-text-primary disabled:opacity-40"
+              >
+                <FloppyDisk className="h-4 w-4" />
+              </button>
 
               <button
                 onClick={() => setShareOpen(true)}

@@ -2,7 +2,9 @@ import { useState } from "react";
 import { Check, Copy, Globe, Lock, UsersThree } from "@phosphor-icons/react";
 import { Modal } from "@/components/ui/Modal.tsx";
 import { Button } from "@/components/ui/Button.tsx";
-import { api } from "@/lib/api.ts";
+import { Toggle } from "@/components/ui/Toggle.tsx";
+import { useToast } from "@/context/ToastContext.tsx";
+import { api, ApiClientError } from "@/lib/api.ts";
 import type { Note, NoteVisibility } from "@/lib/types.ts";
 
 interface ShareNoteModalProps {
@@ -14,6 +16,7 @@ interface ShareNoteModalProps {
 }
 
 export function ShareNoteModal({ open, onClose, note, roomName, onUpdated }: ShareNoteModalProps) {
+  const { toast } = useToast();
   const [savingVisibility, setSavingVisibility] = useState(false);
   const [savingLink, setSavingLink] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -24,6 +27,8 @@ export function ShareNoteModal({ open, onClose, note, roomName, onUpdated }: Sha
     try {
       const { note: updated } = await api.notes.update(note._id, { visibility });
       onUpdated(updated);
+    } catch (err) {
+      toast(err instanceof ApiClientError ? err.message : "Couldn't update sharing. Try again.", "error");
     } finally {
       setSavingVisibility(false);
     }
@@ -34,6 +39,8 @@ export function ShareNoteModal({ open, onClose, note, roomName, onUpdated }: Sha
     try {
       const { note: updated } = await api.notes.share(note._id, enabled);
       onUpdated(updated);
+    } catch (err) {
+      toast(err instanceof ApiClientError ? err.message : "Couldn't update the public link. Try again.", "error");
     } finally {
       setSavingLink(false);
     }
@@ -90,20 +97,12 @@ export function ShareNoteModal({ open, onClose, note, roomName, onUpdated }: Sha
         <div>
           <div className="mb-2 flex items-center justify-between">
             <p className="text-sm font-medium text-text-primary">Public link</p>
-            <button
-              type="button"
+            <Toggle
+              checked={!!note.publicShare?.enabled}
+              onChange={(enabled) => toggleLinkShare(enabled)}
               disabled={savingLink}
-              onClick={() => toggleLinkShare(!note.publicShare?.enabled)}
-              className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
-                note.publicShare?.enabled ? "bg-brand" : "bg-surface-hover"
-              }`}
-            >
-              <span
-                className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
-                  note.publicShare?.enabled ? "translate-x-5" : "translate-x-0.5"
-                }`}
-              />
-            </button>
+              label="Public link"
+            />
           </div>
           <p className="text-xs text-text-secondary">Anyone with the link can view (never edit) — no account needed.</p>
           {note.publicShare?.enabled && shareUrl && (
