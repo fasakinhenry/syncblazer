@@ -33,7 +33,12 @@ function DesktopGoogleSignInButton({ onSuccess, onError }: GoogleSignInButtonPro
       await loginWithGoogle(idToken);
       onSuccess();
     } catch (err) {
-      onError(err instanceof Error ? err.message : "We couldn't sign you in with Google. Please try again.");
+      // A Tauri command's Err(String) rejects the JS promise with a plain
+      // string, not an Error object — without this branch that real message
+      // (e.g. exactly what Google's token endpoint complained about) was
+      // getting silently replaced with the generic fallback below.
+      if (typeof err === "string") onError(err);
+      else onError(err instanceof Error ? err.message : "We couldn't sign you in with Google. Please try again.");
     } finally {
       setLoading(false);
     }
