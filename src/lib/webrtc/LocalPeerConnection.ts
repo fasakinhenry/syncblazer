@@ -7,7 +7,12 @@
 // finish and hand over one complete SDP blob per side instead.
 const CHUNK_SIZE = 16 * 1024;
 const BUFFERED_AMOUNT_LOW_THRESHOLD = CHUNK_SIZE * 8;
-const ICE_GATHERING_TIMEOUT_MS = 4000;
+// Wait for ICE gathering to genuinely finish rather than guessing off a
+// short clock. 4s was cutting gathering off before some networks had found
+// their real usable candidate at all — this is the single biggest cause of
+// "connects for me, hangs for everyone else." 10s is still bounded so the
+// UI never hangs forever on a truly stalled gather.
+const ICE_GATHERING_TIMEOUT_MS = 10000;
 
 /**
  * A full SDP carries a line for every network candidate the browser found —
@@ -16,19 +21,20 @@ const ICE_GATHERING_TIMEOUT_MS = 4000;
  * STUN/TURN configured, so everything gathered is already a same-network
  * "host" candidate.
  *
- * Trying to cut this down to exactly one candidate (an earlier version of
- * this) shortened the code but hurt real connectivity: phones and laptops
- * routinely have more than one active interface at a time, and if the one
- * guessed candidate happens to be on the wrong interface, ICE has nothing
- * else to fall back to and the connection genuinely fails. Keeping a
- * handful of the most promising candidates gives ICE real alternatives
- * while still dropping the ones essentially never useful here (IPv6,
- * TCP, non-host types) — this only ever deletes whole lines from real,
- * browser-generated SDP, never hand-constructs SDP grammar. The
- * connection's own full local candidate set is untouched; this only
- * affects what gets told to the other side.
+ * Trying to cut this down hard (earlier versions capped at 1, then 3)
+ * shortened the code but hurt real connectivity: phones and laptops
+ * routinely have more than one active interface at a time (WiFi + a virtual
+ * adapter, a VPN, etc), and if the few guessed candidates happen to be on
+ * the wrong interface, ICE has nothing else to fall back to and the
+ * connection genuinely fails on someone else's machine even though it
+ * worked on ours. The payload is already gzip+base64url compressed, so a
+ * substantially larger candidate budget is still a perfectly scannable QR —
+ * this only ever deletes whole lines from real, browser-generated SDP,
+ * never hand-constructs SDP grammar. The connection's own full local
+ * candidate set is untouched; this only affects what gets told to the
+ * other side.
  */
-function trimCandidates(sdp: string, maxCandidates = 3): string {
+function trimCandidates(sdp: string, maxCandidates = 10): string {
   const lines = sdp.split("\r\n");
   const candidateLines = lines.filter((l) => l.startsWith("a=candidate:"));
   if (candidateLines.length <= maxCandidates) return sdp;
@@ -130,21 +136,21 @@ export class LocalPeerConnection {
 
   /** Host side: create an offer and wait for ICE gathering to finish so the
    * returned SDP is "complete" (self-contained, nothing more to exchange). */
-  async createOffer(): Promise<string> {
+  async createOffer(onProgress?: (candidateCount: number) => void): Promise<string> {
     this.channel = this.pc.createDataChannel("syncblaze-local");
     this.wireChannel();
     const offer = await this.pc.createOffer();
     await this.pc.setLocalDescription(offer);
-    await this.waitForIceGatheringComplete();
+    await this.waitForIceGatheringComplete(onProgress);
     return trimCandidates(this.pc.localDescription!.sdp);
   }
 
   /** Guest side: consume the host's offer, produce a complete answer. */
-  async acceptOffer(offerSdp: string): Promise<string> {
+  async acceptOffer(offerSdp: string, onProgress?: (candidateCount: number) => void): Promise<string> {
     await this.pc.setRemoteDescription({ type: "offer", sdp: offerSdp });
     const answer = await this.pc.createAnswer();
     await this.pc.setLocalDescription(answer);
-    await this.waitForIceGatheringComplete();
+    await this.waitForIceGatheringComplete(onProgress);
     return trimCandidates(this.pc.localDescription!.sdp);
   }
 
@@ -211,23 +217,35 @@ export class LocalPeerConnection {
     });
   }
 
-  private waitForIceGatheringComplete(): Promise<void> {
+  private waitForIceGatheringComplete(onProgress?: (candidateCount: number) => void): Promise<void> {
     if (this.pc.iceGatheringState === "complete") return Promise.resolve();
     return new Promise((resolve) => {
+      let candidateCount = 0;
+      const onCandidate = (event: RTCPeerConnectionIceEvent) => {
+        if (event.candidate) {
+          candidateCount += 1;
+          onProgress?.(candidateCount);
+        }
+      };
       const check = () => {
         if (this.pc.iceGatheringState === "complete") {
-          this.pc.removeEventListener("icegatheringstatechange", check);
-          clearTimeout(timeout);
+          cleanup();
           resolve();
         }
+      };
+      const cleanup = () => {
+        this.pc.removeEventListener("icegatheringstatechange", check);
+        this.pc.removeEventListener("icecandidate", onCandidate as EventListener);
+        clearTimeout(timeout);
       };
       // Don't hang forever on an unusual network config — proceed with
       // whatever candidates were found in time rather than blocking the UI.
       const timeout = setTimeout(() => {
-        this.pc.removeEventListener("icegatheringstatechange", check);
+        cleanup();
         resolve();
       }, ICE_GATHERING_TIMEOUT_MS);
       this.pc.addEventListener("icegatheringstatechange", check);
+      this.pc.addEventListener("icecandidate", onCandidate as EventListener);
     });
   }
 

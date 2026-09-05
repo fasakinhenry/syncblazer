@@ -8,6 +8,7 @@ interface ImportMetaEnv {
   readonly VITE_GOOGLE_CLIENT_ID?: string;
   readonly VITE_GA_MEASUREMENT_ID?: string;
   readonly VITE_ADMIN_EMAILS?: string;
+  readonly VITE_DESKTOP_DOWNLOAD_URL?: string;
 }
 
 interface ImportMeta {

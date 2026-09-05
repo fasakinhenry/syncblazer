@@ -22,7 +22,7 @@ export function getOrCreateInstallId(): string {
   return id;
 }
 
-function detectPlatform(): DevicePlatform {
+export function detectPlatform(): DevicePlatform {
   const ua = navigator.userAgent;
   if (/iPhone|iPad|iPod/i.test(ua)) return "ios";
   if (/Android/i.test(ua)) return "android";

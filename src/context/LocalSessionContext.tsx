@@ -37,6 +37,10 @@ interface LocalSessionContextValue {
   incomingTransfers: LocalIncomingTransfer[];
   pendingInviteCode: string | null;
   connecting: boolean;
+  /** How many ICE candidates have been found so far while generating an
+   * invite/answer code — null when not actively gathering. Lets the UI show
+   * real progress instead of a code that looks ready before it actually is. */
+  gatheringCandidateCount: number | null;
   error: string | null;
 
   startHosting: (name: string) => void;
@@ -62,6 +66,7 @@ export function LocalSessionProvider({ children }: { children: ReactNode }) {
   const [incomingTransfers, setIncomingTransfers] = useState<LocalIncomingTransfer[]>([]);
   const [pendingInviteCode, setPendingInviteCode] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
+  const [gatheringCandidateCount, setGatheringCandidateCount] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const myPeerIdRef = useRef(randomPeerId());
@@ -176,10 +181,11 @@ export function LocalSessionProvider({ children }: { children: ReactNode }) {
   const createInvite = useCallback(async () => {
     setError(null);
     setConnecting(true);
+    setGatheringCandidateCount(0);
     try {
       const conn = new LocalPeerConnection();
       pendingConnectionRef.current = conn;
-      const sdp = await conn.createOffer();
+      const sdp = await conn.createOffer((count) => setGatheringCandidateCount(count));
       const code = await encodeSignalingPayload({
         v: 1,
         kind: "offer",
@@ -192,6 +198,7 @@ export function LocalSessionProvider({ children }: { children: ReactNode }) {
       setError("Couldn't generate an invite. Please try again.");
     } finally {
       setConnecting(false);
+      setGatheringCandidateCount(null);
     }
   }, [myName]);
 
@@ -259,8 +266,10 @@ export function LocalSessionProvider({ children }: { children: ReactNode }) {
         setMyName(name);
         setRole("guest");
 
+        setGatheringCandidateCount(0);
         const conn = new LocalPeerConnection(wireHandlers(payload.hostId, payload.hostName, false));
-        const answerSdp = await conn.acceptOffer(payload.sdp);
+        const answerSdp = await conn.acceptOffer(payload.sdp, (count) => setGatheringCandidateCount(count));
+        setGatheringCandidateCount(null);
         connectionsRef.current.set(payload.hostId, conn);
         setPeers([{ id: payload.hostId, name: payload.hostName, status: "connecting" }]);
 
@@ -366,6 +375,7 @@ export function LocalSessionProvider({ children }: { children: ReactNode }) {
       incomingTransfers,
       pendingInviteCode,
       connecting,
+      gatheringCandidateCount,
       error,
       startHosting,
       createInvite,
@@ -384,6 +394,7 @@ export function LocalSessionProvider({ children }: { children: ReactNode }) {
       incomingTransfers,
       pendingInviteCode,
       connecting,
+      gatheringCandidateCount,
       error,
       startHosting,
       createInvite,

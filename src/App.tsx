@@ -8,6 +8,8 @@ import { SocketProvider } from "@/context/SocketContext.tsx";
 import { RoomProvider } from "@/context/RoomContext.tsx";
 import { PeerTransferProvider } from "@/context/PeerTransferContext.tsx";
 import { LocalSessionProvider } from "@/context/LocalSessionContext.tsx";
+import { QuickPairProvider } from "@/context/QuickPairContext.tsx";
+import { LanPairProvider } from "@/context/LanPairContext.tsx";
 import { ProtectedRoute, GuestRoute, PublicRoute, AdminRoute } from "@/components/ProtectedRoute.tsx";
 import { AppShell } from "@/components/layout/AppShell.tsx";
 import { PwaUpdatePrompt } from "@/components/PwaUpdatePrompt.tsx";
@@ -29,6 +31,11 @@ const DevicesPage = lazy(() => import("@/pages/DevicesPage.tsx").then((m) => ({ 
 const TransfersPage = lazy(() => import("@/pages/TransfersPage.tsx").then((m) => ({ default: m.TransfersPage })));
 const ProfilePage = lazy(() => import("@/pages/ProfilePage.tsx").then((m) => ({ default: m.ProfilePage })));
 const AdminPage = lazy(() => import("@/pages/admin/AdminPage.tsx").then((m) => ({ default: m.AdminPage })));
+const LocalTransferHubPage = lazy(() =>
+  import("@/pages/LocalTransferHubPage.tsx").then((m) => ({ default: m.LocalTransferHubPage }))
+);
+const QuickConnectPage = lazy(() => import("@/pages/QuickConnectPage.tsx").then((m) => ({ default: m.QuickConnectPage })));
+const LanConnectPage = lazy(() => import("@/pages/LanConnectPage.tsx").then((m) => ({ default: m.LanConnectPage })));
 
 export default function App() {
   return (
@@ -41,6 +48,8 @@ export default function App() {
               <RoomProvider>
                 <PeerTransferProvider>
                   <LocalSessionProvider>
+                  <QuickPairProvider>
+                  <LanPairProvider>
                   <Routes>
                     <Route element={<PublicRoute />}>
                       <Route path="/" element={<LandingPage />} />
@@ -66,6 +75,30 @@ export default function App() {
                           element={
                             <Suspense fallback={<PageSpinner />}>
                               <LocalSessionPage />
+                            </Suspense>
+                          }
+                        />
+                        <Route
+                          path="/local-transfer"
+                          element={
+                            <Suspense fallback={<PageSpinner />}>
+                              <LocalTransferHubPage />
+                            </Suspense>
+                          }
+                        />
+                        <Route
+                          path="/quick-connect"
+                          element={
+                            <Suspense fallback={<PageSpinner />}>
+                              <QuickConnectPage />
+                            </Suspense>
+                          }
+                        />
+                        <Route
+                          path="/lan-connect"
+                          element={
+                            <Suspense fallback={<PageSpinner />}>
+                              <LanConnectPage />
                             </Suspense>
                           }
                         />
@@ -138,6 +171,8 @@ export default function App() {
                   </Routes>
                   <AnalyticsBeacon />
                   <PwaUpdatePrompt />
+                  </LanPairProvider>
+                  </QuickPairProvider>
                   </LocalSessionProvider>
                 </PeerTransferProvider>
               </RoomProvider>

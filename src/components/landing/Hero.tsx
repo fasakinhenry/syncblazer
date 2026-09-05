@@ -4,6 +4,7 @@ import { ArrowRight, DeviceMobile, Fire, Laptop } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/Button.tsx";
 import { Reveal } from "@/components/landing/Reveal.tsx";
 import { InstallAppButton } from "@/components/InstallAppButton.tsx";
+import { DesktopDownloadButton } from "@/components/DesktopDownloadButton.tsx";
 
 export function Hero() {
   return (
@@ -40,6 +41,7 @@ export function Hero() {
                 </Button>
               </a>
               <InstallAppButton size="lg" />
+              <DesktopDownloadButton size="lg" />
             </div>
           </Reveal>
           <Reveal delay={0.2}>

@@ -13,6 +13,7 @@ import { JoinRoomModal } from "@/components/rooms/JoinRoomModal.tsx";
 import { Button } from "@/components/ui/Button.tsx";
 import { PageSpinner } from "@/components/ui/Spinner.tsx";
 import { InstallAppButton } from "@/components/InstallAppButton.tsx";
+import { DesktopDownloadButton } from "@/components/DesktopDownloadButton.tsx";
 
 function greeting(): string {
   const hour = new Date().getHours();
@@ -56,20 +57,23 @@ export function RoomPage() {
           </p>
           <h1 className="text-2xl font-semibold text-text-primary">Your workspace</h1>
         </div>
-        <InstallAppButton />
+        <div className="flex gap-2">
+          <DesktopDownloadButton />
+          <InstallAppButton />
+        </div>
       </div>
 
       <Link
-        to="/local-session"
+        to="/local-transfer"
         className="flex items-center gap-4 rounded-xl border border-brand/30 bg-brand-soft p-4 transition-colors hover:border-brand"
       >
         <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-brand text-white">
           <WifiHigh className="h-5 w-5" />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="font-medium text-text-primary">Local session — works with zero internet</p>
+          <p className="font-medium text-text-primary">Local transfer — send directly, skip the cloud</p>
           <p className="text-sm text-text-secondary">
-            Connect over hotspot or Wi-Fi with a QR code and send files directly, even with no one online.
+            A quick code, a QR scan, or a desktop app — pick what fits, even with no one online.
           </p>
         </div>
         <ArrowRight className="h-5 w-5 shrink-0 text-brand" />
