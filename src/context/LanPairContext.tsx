@@ -121,6 +121,15 @@ export function LanPairProvider({ children }: { children: ReactNode }) {
         const ws = new WebSocket(wsUrl);
         wsRef.current = ws;
 
+        // A socket that never opens and never errors (some firewall/network
+        // configs just silently drop the connection attempt) used to hang
+        // this promise — and the UI — forever with no feedback at all.
+        const timeout = setTimeout(() => {
+          ws.close();
+          reject(new Error("Couldn't reach that device — check you're both on the same Wi-Fi/hotspot."));
+        }, 15000);
+        const clearConnectTimeout = () => clearTimeout(timeout);
+
         ws.onopen = () => {
           ws.send(JSON.stringify({ type: "join", code, peerId: myPeerIdRef.current, name }));
         };
@@ -134,6 +143,7 @@ export function LanPairProvider({ children }: { children: ReactNode }) {
           }
 
           if (message.type === "joined") {
+            clearConnectTimeout();
             setPeers(message.peers.map((p) => ({ id: p.peerId, name: p.name, status: "connecting" as const })));
             // We're the newcomer — initiate a connection to everyone already there.
             for (const p of message.peers) {
@@ -157,7 +167,10 @@ export function LanPairProvider({ children }: { children: ReactNode }) {
           }
         };
 
-        ws.onerror = () => reject(new Error("Couldn't reach that device on the local network."));
+        ws.onerror = () => {
+          clearConnectTimeout();
+          reject(new Error("Couldn't reach that device on the local network."));
+        };
         ws.onclose = () => setError((prev) => prev ?? "Lost the local connection.");
       });
     },
@@ -173,10 +186,15 @@ export function LanPairProvider({ children }: { children: ReactNode }) {
       try {
         const { ip, port } = await getLanInfo();
         const code = randomCode();
-        const url = `ws://${ip}:${port}/pair/${code}`;
-        setQrUrl(url);
+        // The QR code needs the real LAN-facing IP — that's what the phone
+        // will actually reach. But THIS device connecting to itself via
+        // that same LAN IP is unreliable (Windows doesn't always loop
+        // traffic back to your own external-facing address the way it does
+        // for the loopback address) — use 127.0.0.1 for our own join so it
+        // isn't at the mercy of that.
+        setQrUrl(`ws://${ip}:${port}/pair/${code}`);
         setRole("host");
-        await connect(url, code, name);
+        await connect(`ws://127.0.0.1:${port}/pair/${code}`, code, name);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Couldn't start hosting.");
         throw err;
