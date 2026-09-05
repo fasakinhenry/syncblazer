@@ -23,3 +23,12 @@ export async function getLanInfo(): Promise<LanInfo> {
   return invoke<LanInfo>("get_lan_info");
 }
 
+/** Opens the real system browser for Google sign-in (PKCE, no secret
+ * involved) and resolves with the id_token once the user completes it there
+ * — the desktop app never renders Google's popup inside its own webview.
+ * Only call after isTauri(). Rejects if the user cancels or it times out. */
+export async function startGoogleSignIn(clientId: string): Promise<string> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<string>("start_google_signin", { clientId });
+}
+
