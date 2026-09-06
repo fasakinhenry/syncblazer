@@ -1,30 +1,37 @@
+import { Link } from "react-router-dom";
 import { DownloadSimple } from "@phosphor-icons/react";
-import { desktopDownloadInfo } from "@/lib/desktopApp.ts";
+import { useDesktopDownload } from "@/hooks/useDesktopDownload.ts";
 import { Button } from "@/components/ui/Button.tsx";
 
 /** Only renders on a platform the desktop app actually targets (Windows/Mac/
- * Linux) — on phones this would just be dead weight. Links to nothing and
- * shows "Coming soon" if VITE_DESKTOP_DOWNLOAD_URL hasn't been set yet,
- * rather than a broken link. */
+ * Linux) — on phones this would just be dead weight. Clicking it starts the
+ * download immediately (a direct link to the matching installer, resolved
+ * from GitHub's releases API) rather than sending anyone to the releases
+ * page to figure out which of nine files is theirs. */
 export function DesktopDownloadButton({ size = "sm", className = "" }: { size?: "sm" | "md" | "lg"; className?: string }) {
-  const { label, relevant, url } = desktopDownloadInfo();
+  const { label, relevant, url, loading } = useDesktopDownload();
   if (!relevant) return null;
 
-  if (!url) {
+  if (loading || !url) {
     return (
-      <Button variant="secondary" size={size} disabled className={`gap-1.5 ${className}`}>
+      <Button variant="secondary" size={size} disabled={loading} className={`gap-1.5 ${className}`}>
         <DownloadSimple className="h-4 w-4" />
-        {label} — coming soon
+        {loading ? "Checking for the latest build…" : `${label} — unavailable`}
       </Button>
     );
   }
 
   return (
-    <a href={url} target="_blank" rel="noreferrer">
-      <Button variant="secondary" size={size} className={`gap-1.5 ${className}`}>
-        <DownloadSimple className="h-4 w-4" />
-        {label}
-      </Button>
-    </a>
+    <span className="inline-flex items-center gap-2">
+      <a href={url} download>
+        <Button variant="secondary" size={size} className={`gap-1.5 ${className}`}>
+          <DownloadSimple className="h-4 w-4" />
+          {label}
+        </Button>
+      </a>
+      <Link to="/downloads" className="text-xs font-medium text-text-secondary hover:text-text-primary">
+        Other platforms →
+      </Link>
+    </span>
   );
 }

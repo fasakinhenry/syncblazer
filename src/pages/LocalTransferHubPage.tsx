@@ -10,8 +10,8 @@ import {
   WifiSlash,
 } from "@phosphor-icons/react";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus.ts";
+import { useDesktopDownload } from "@/hooks/useDesktopDownload.ts";
 import { isTauri } from "@/lib/tauri.ts";
-import { desktopDownloadInfo } from "@/lib/desktopApp.ts";
 import { detectDeviceInfo } from "@/lib/deviceInfo.ts";
 import { Badge } from "@/components/ui/Badge.tsx";
 import { Button } from "@/components/ui/Button.tsx";
@@ -68,7 +68,7 @@ function OptionCard({ icon, title, badge, summary, points, cta, disabled, disabl
 export function LocalTransferHubPage() {
   const online = useOnlineStatus();
   const inDesktopApp = isTauri();
-  const download = desktopDownloadInfo();
+  const download = useDesktopDownload();
   const isMobile = detectDeviceInfo().type === "mobile" || detectDeviceInfo().type === "tablet";
 
   return (
@@ -159,16 +159,21 @@ export function LocalTransferHubPage() {
               </Button>
             </Link>
           ) : download.relevant && download.url ? (
-            <a href={download.url} target="_blank" rel="noreferrer">
-              <Button variant="secondary" className="w-full gap-1.5">
-                <DownloadSimple className="h-4 w-4" />
-                {download.label}
-              </Button>
-            </a>
+            <div className="flex flex-col gap-1.5">
+              <a href={download.url} download>
+                <Button variant="secondary" className="w-full gap-1.5">
+                  <DownloadSimple className="h-4 w-4" />
+                  {download.label}
+                </Button>
+              </a>
+              <Link to="/downloads" className="text-center text-xs font-medium text-text-secondary hover:text-text-primary">
+                Other platforms / architectures →
+              </Link>
+            </div>
           ) : (
-            <Button variant="secondary" disabled className="w-full gap-1.5">
+            <Button variant="secondary" disabled={download.loading} className="w-full gap-1.5">
               <DownloadSimple className="h-4 w-4" />
-              {download.relevant ? "Coming soon" : "Available for Windows, Mac and Linux"}
+              {download.relevant ? (download.loading ? "Checking for the latest build…" : "Unavailable right now") : "Available for Windows, Mac and Linux"}
             </Button>
           )
         }
