@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { Broadcast, ChatText, Monitor, PaperPlaneTilt, SignOut, UploadSimple, X } from "@phosphor-icons/react";
+import { Broadcast, ChatText, Laptop, Monitor, PaperPlaneTilt, SignOut, UploadSimple, WifiHigh, X } from "@phosphor-icons/react";
 import { useLanPair } from "@/context/LanPairContext.tsx";
 import { useToast } from "@/context/ToastContext.tsx";
 import { detectDeviceInfo } from "@/lib/deviceInfo.ts";
@@ -20,7 +20,7 @@ function suggestedName(): string {
 }
 
 export function LanConnectPage() {
-  const { role, qrUrl, peers, connecting, error, startHosting, joinViaUrl, leaveSession, sendFile, sendText } = useLanPair();
+  const { role, qrUrl, connectionInfo, peers, connecting, error, startHosting, joinViaUrl, leaveSession, sendFile, sendText } = useLanPair();
   const { toast } = useToast();
   const inDesktopApp = isTauri();
 
@@ -156,6 +156,15 @@ export function LanConnectPage() {
         <p className="text-sm text-text-secondary">
           Scan this from your phone's SyncBlaze app — Local Transfer → Desktop App. No internet needed.
         </p>
+        {connectionInfo && (
+          <div className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-xs text-text-secondary">
+            <Laptop className="h-3.5 w-3.5 shrink-0 text-brand" />
+            <span>
+              Hosting as <span className="font-medium text-text-primary">{connectionInfo.label}</span> ·{" "}
+              <span className="font-mono">{connectionInfo.ip}:{connectionInfo.port}</span>
+            </span>
+          </div>
+        )}
         {error && <p className="text-sm text-danger">{error}</p>}
         <Button variant="ghost" onClick={leaveSession}>
           Cancel
@@ -184,6 +193,25 @@ export function LanConnectPage() {
           Leave
         </Button>
       </div>
+
+      {connectionInfo && (
+        <Card className="flex items-center gap-3 p-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-soft text-brand">
+            <Laptop className="h-5 w-5" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium text-text-primary">
+              {role === "host" ? "Hosting as" : "Connected to"} {connectionInfo.label}
+            </p>
+            <p className="flex items-center gap-1 text-xs text-text-secondary">
+              <WifiHigh className="h-3 w-3" />
+              <span className="font-mono">{connectionInfo.ip}:{connectionInfo.port}</span>
+              <span aria-hidden="true">·</span>
+              <span>Local network</span>
+            </p>
+          </div>
+        </Card>
+      )}
 
       {error && <p className="text-sm text-danger">{error}</p>}
 

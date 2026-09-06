@@ -15,6 +15,7 @@ export { isTauri } from "@tauri-apps/api/core";
 export interface LanInfo {
   ip: string;
   port: number;
+  hostname: string;
 }
 
 /** Only ever call this after checking isTauri() — outside the desktop shell

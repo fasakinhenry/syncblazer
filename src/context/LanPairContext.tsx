@@ -25,10 +25,17 @@ type ServerMessage =
   | { type: "peerLeft"; peerId: string }
   | { type: "signal"; fromPeerId: string; kind: "offer" | "answer" | "ice-candidate"; data: unknown };
 
+export interface LanConnectionInfo {
+  label: string; // hostname — the host's own when hosting, the remote host's when joining
+  ip: string;
+  port: number;
+}
+
 interface LanPairContextValue {
   role: SessionRole;
   myName: string;
-  qrUrl: string | null; // ws://<ip>:<port>/pair/<code> — only set while hosting
+  qrUrl: string | null; // ws://<ip>:<port>/pair/<code>?host=<name> — only set while hosting
+  connectionInfo: LanConnectionInfo | null;
   peers: LanPairPeerInfo[];
   incomingTransfers: LanPairIncomingTransfer[];
   connecting: boolean;
@@ -60,6 +67,7 @@ export function LanPairProvider({ children }: { children: ReactNode }) {
   const [role, setRole] = useState<SessionRole>("none");
   const [myName, setMyName] = useState("");
   const [qrUrl, setQrUrl] = useState<string | null>(null);
+  const [connectionInfo, setConnectionInfo] = useState<LanConnectionInfo | null>(null);
   const [peers, setPeers] = useState<LanPairPeerInfo[]>([]);
   const [incomingTransfers, setIncomingTransfers] = useState<LanPairIncomingTransfer[]>([]);
   const [connecting, setConnecting] = useState(false);
@@ -184,7 +192,7 @@ export function LanPairProvider({ children }: { children: ReactNode }) {
       setConnecting(true);
       setMyName(name);
       try {
-        const { ip, port } = await getLanInfo();
+        const { ip, port, hostname } = await getLanInfo();
         const code = randomCode();
         // The QR code needs the real LAN-facing IP — that's what the phone
         // will actually reach. But THIS device connecting to itself via
@@ -192,7 +200,12 @@ export function LanPairProvider({ children }: { children: ReactNode }) {
         // traffic back to your own external-facing address the way it does
         // for the loopback address) — use 127.0.0.1 for our own join so it
         // isn't at the mercy of that.
-        setQrUrl(`ws://${ip}:${port}/pair/${code}`);
+        //
+        // The hostname rides along as a query param purely so the scanning
+        // device can show "Connecting to Henry's Laptop" instead of a bare
+        // IP — it's cosmetic, the relay itself ignores it entirely.
+        setQrUrl(`ws://${ip}:${port}/pair/${code}?host=${encodeURIComponent(hostname)}`);
+        setConnectionInfo({ label: hostname, ip, port });
         setRole("host");
         await connect(`ws://127.0.0.1:${port}/pair/${code}`, code, name);
       } catch (err) {
@@ -213,6 +226,21 @@ export function LanPairProvider({ children }: { children: ReactNode }) {
       try {
         const code = wsUrl.split("/pair/")[1]?.split(/[?#]/)[0];
         if (!code) throw new Error("That code doesn't look right.");
+
+        // Pull the host's IP/port/name out of the scanned URL for display —
+        // "Connecting to Henry's Laptop at 192.168.1.42" reads a lot more
+        // convincing than a bare pairing code ever could.
+        try {
+          const parsed = new URL(wsUrl.replace(/^ws/, "http"));
+          setConnectionInfo({
+            label: parsed.searchParams.get("host") || parsed.hostname,
+            ip: parsed.hostname,
+            port: Number(parsed.port) || 0,
+          });
+        } catch {
+          // Cosmetic only — a malformed URL here still isn't fatal to pairing.
+        }
+
         setRole("guest");
         await connect(wsUrl, code, name);
       } catch (err) {
@@ -232,6 +260,7 @@ export function LanPairProvider({ children }: { children: ReactNode }) {
     connectionsRef.current.clear();
     setRole("none");
     setQrUrl(null);
+    setConnectionInfo(null);
     setPeers([]);
     setIncomingTransfers([]);
     setError(null);
@@ -261,6 +290,7 @@ export function LanPairProvider({ children }: { children: ReactNode }) {
       role,
       myName,
       qrUrl,
+      connectionInfo,
       peers,
       incomingTransfers,
       connecting,
@@ -272,7 +302,7 @@ export function LanPairProvider({ children }: { children: ReactNode }) {
       sendText,
       dismissIncoming,
     }),
-    [role, myName, qrUrl, peers, incomingTransfers, connecting, error, startHosting, joinViaUrl, leaveSession, sendFile, sendText, dismissIncoming]
+    [role, myName, qrUrl, connectionInfo, peers, incomingTransfers, connecting, error, startHosting, joinViaUrl, leaveSession, sendFile, sendText, dismissIncoming]
   );
 
   return <LanPairContext.Provider value={value}>{children}</LanPairContext.Provider>;
