@@ -92,10 +92,34 @@ export function NotesPage() {
   const selected = useMemo(() => notes?.find((n) => n._id === selectedId) ?? null, [notes, selectedId]);
   const selectedRoom = useMemo(() => rooms.find((r) => r._id === selected?.roomId), [rooms, selected]);
 
-  const reconcileLocalNote = useCallback((localId: string, note: Note) => {
-    setNotes((prev) => prev?.map((n) => (n._id === localId ? note : n)) ?? null);
-    setSelectedId((prev) => (prev === localId ? note._id : prev));
+  // Sets selectedId AND the draft fields together, synchronously, in one
+  // batch — never rely on a follow-up effect to hydrate the draft from
+  // `notes` after selectedId changes. TipTap's editor (see NoteEditor.tsx)
+  // only reads `initialContent` at the moment it's constructed for a given
+  // noteId; if the draft is still stale/empty on that first render (which it
+  // was, via the old effect-based approach — the effect runs one tick after
+  // the note-switching render already mounted a fresh editor), the editor
+  // gets stuck showing that stale snapshot forever, and the next autosave
+  // then patches the server with it — silently wiping the real content.
+  const selectNote = useCallback((note: Note | null) => {
+    setSelectedId(note?._id ?? null);
+    setDraftTitle(note?.title ?? "");
+    setDraftContent(note?.content ?? "");
+    setDraftFont(note?.fontFamily ?? DEFAULT_NOTE_FONT);
   }, []);
+
+  const reconcileLocalNote = useCallback(
+    (localId: string, note: Note) => {
+      setNotes((prev) => prev?.map((n) => (n._id === localId ? note : n)) ?? null);
+      if (selectedId === localId) {
+        setSelectedId(note._id);
+        setDraftTitle(note.title);
+        setDraftContent(note.content);
+        setDraftFont(note.fontFamily);
+      }
+    },
+    [selectedId]
+  );
 
   const { online, pendingCount, flush: syncFlush } = useNotesSync(reconcileLocalNote);
 
@@ -161,22 +185,6 @@ export function NotesPage() {
     document.addEventListener("mousedown", onClick);
     return () => document.removeEventListener("mousedown", onClick);
   }, [exportOpen]);
-
-  // Deliberately keyed on selectedId, not on `selected` (which gets a new
-  // object reference on every notes-array mutation, including the echo of
-  // our OWN save landing back in state). Depending on `selected` meant this
-  // effect fired after every autosave too — and if the user had typed more
-  // while that save's request was still in flight, it would stomp the
-  // editor's draft state back to the older, just-saved value, discarding
-  // keystrokes that happened in between. Only actually switching notes
-  // should reinitialize the draft from stored state.
-  useEffect(() => {
-    const note = notesRef.current?.find((n) => n._id === selectedId) ?? null;
-    setDraftTitle(note?.title ?? "");
-    setDraftContent(note?.content ?? "");
-    setDraftFont(note?.fontFamily ?? DEFAULT_NOTE_FONT);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId]);
 
   const flushPersist = useCallback(
     async (noteId: string) => {
@@ -325,7 +333,7 @@ export function NotesPage() {
         fontFamily: DEFAULT_NOTE_FONT,
       });
       setNotes((prev) => (prev ? [localNote, ...prev] : [localNote]));
-      setSelectedId(localId);
+      selectNote(localNote);
       toast("Saved locally — will sync once you're back online", "info");
       void syncFlush();
       return;
@@ -333,7 +341,7 @@ export function NotesPage() {
     const { note } = await api.notes.create({ roomId: defaultRoom._id, title: "Untitled note" });
     await cacheNote(note);
     setNotes((prev) => (prev ? [note, ...prev] : [note]));
-    setSelectedId(note._id);
+    selectNote(note);
   };
 
   const deleteNote = async (noteId: string) => {
@@ -540,7 +548,7 @@ export function NotesPage() {
             {filteredNotes.map((note) => (
               <button
                 key={note._id}
-                onClick={() => (selectionMode ? toggleChecked(note._id) : setSelectedId(note._id))}
+                onClick={() => (selectionMode ? toggleChecked(note._id) : selectNote(note))}
                 className={`flex items-center gap-2 rounded-lg px-3 py-2.5 text-left transition-colors ${
                   selectedId === note._id && !selectionMode ? "bg-brand-soft" : "hover:bg-surface-hover"
                 }`}
