@@ -58,13 +58,22 @@ export function QuickConnectPage() {
   const [celebrateConnection, setCelebrateConnection] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const knownConnectedIdsRef = useRef<Set<string>>(new Set());
+  const knownReconnectingIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     const nowConnected = peers.filter((p) => p.status === "connected").map((p) => p.id);
     const isNew = nowConnected.some((id) => !knownConnectedIdsRef.current.has(id));
     if (isNew) setCelebrateConnection(true);
     knownConnectedIdsRef.current = new Set(nowConnected);
-  }, [peers]);
+
+    const nowReconnecting = peers.filter((p) => p.status === "reconnecting");
+    for (const peer of nowReconnecting) {
+      if (!knownReconnectingIdsRef.current.has(peer.id)) {
+        toast(`Connection to ${peer.name} dropped — reconnecting…`, "info");
+      }
+    }
+    knownReconnectingIdsRef.current = new Set(nowReconnecting.map((p) => p.id));
+  }, [peers, toast]);
 
   const transferActive = sending || incomingTransfers.some((t) => t.status === "receiving");
   useWakeLock(transferActive);
@@ -262,9 +271,12 @@ export function QuickConnectPage() {
   }
 
   // --- Connected dashboard ---
-  const connectedPeers = peers.filter((p) => p.status === "connected");
-  const canBroadcast = connectedPeers.length > 0;
-  const targetLabel = (target: string | "all") => (target === "all" ? "everyone" : connectedPeers.find((p) => p.id === target)?.name ?? "device");
+  // "reconnecting" peers stay visible (and sendable — a send just queues
+  // until the link comes back) rather than disappearing, so a drop doesn't
+  // look like the other person left.
+  const visiblePeers = peers.filter((p) => p.status === "connected" || p.status === "reconnecting");
+  const canBroadcast = visiblePeers.length > 0;
+  const targetLabel = (target: string | "all") => (target === "all" ? "everyone" : visiblePeers.find((p) => p.id === target)?.name ?? "device");
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-6">
@@ -355,17 +367,22 @@ export function QuickConnectPage() {
             </span>
           )}
         </div>
-        {connectedPeers.length === 0 ? (
+        {visiblePeers.length === 0 ? (
           <p className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-text-secondary">
             No one's joined yet.
           </p>
         ) : (
           <div className="flex flex-col gap-2">
-            {connectedPeers.map((peer) => (
+            {visiblePeers.map((peer) => (
               <div key={peer.id} className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-3">
                 <div className="flex items-center gap-3">
-                  <span className="h-2 w-2 shrink-0 rounded-full bg-success" />
-                  <span className="flex-1 truncate text-sm font-medium text-text-primary">{peer.name}</span>
+                  <span
+                    className={`h-2 w-2 shrink-0 rounded-full ${peer.status === "reconnecting" ? "animate-pulse bg-warning" : "bg-success"}`}
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium text-text-primary">{peer.name}</span>
+                    {peer.status === "reconnecting" && <span className="text-xs text-warning">Reconnecting…</span>}
+                  </span>
                   <div className="flex shrink-0 gap-1.5">
                     <Button size="sm" variant="ghost" onClick={() => setComposeTarget(peer.id)} className="gap-1.5">
                       <ChatText className="h-3.5 w-3.5" />

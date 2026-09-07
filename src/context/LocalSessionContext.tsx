@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from "react";
-import { LocalPeerConnection, type LocalTransferMeta } from "@/lib/webrtc/LocalPeerConnection.ts";
+import { LocalPeerConnection, LocalTransferInterruptedError, type LocalTransferMeta } from "@/lib/webrtc/LocalPeerConnection.ts";
 import {
   decodeSignalingPayload,
   encodeSignalingPayload,
@@ -57,6 +57,31 @@ interface LocalSessionContextValue {
   leaveSession: () => void;
 }
 
+interface PendingLocalReceive {
+  id: string;
+  meta: LocalTransferMeta;
+  chunks: ArrayBuffer[];
+  bytesReceived: number;
+}
+
+interface PendingLocalSend {
+  id: string;
+  file: File;
+  kind: "file" | "image";
+  onProgress?: (sent: number, total: number) => void;
+  broadcastMeta?: Partial<LocalTransferMeta>;
+}
+
+// There's no persistent signaling channel in this mode — a manual re-scan
+// or re-typed code creates an entirely fresh connection (and, on the guest
+// side, a fresh peer id), so unlike Quick Connect / Desktop LAN there's
+// nothing to automatically reconnect to. What's threaded through here is
+// just the interrupted transfer's own state — held as "the one pending
+// transfer," not per-peer — so that IF the two devices manually re-pair,
+// whichever fresh connection comes up next picks it back up instead of
+// starting over. See LocalPeerConnection.ts for the shared wire protocol.
+const RESUME_HANDSHAKE_TIMEOUT_MS = 3000;
+
 const LocalSessionContext = createContext<LocalSessionContextValue | null>(null);
 
 export function LocalSessionProvider({ children }: { children: ReactNode }) {
@@ -79,6 +104,9 @@ export function LocalSessionProvider({ children }: { children: ReactNode }) {
   // re-renders the disabled state) — setRemoteDescription throws if called
   // a second time once the connection has already moved past that state.
   const handshakeInFlightRef = useRef(false);
+  const pendingReceiveRef = useRef<PendingLocalReceive | null>(null);
+  const pendingSendRef = useRef<PendingLocalSend | null>(null);
+  const resumeOffsetResolverRef = useRef<((bytesReceived: number | null) => void) | null>(null);
 
   const addIncoming = useCallback((id: string, meta: LocalTransferMeta, fromPeerName: string) => {
     setIncomingTransfers((prev) => [...prev, { id, meta, fromPeerName, bytesTransferred: 0, status: "receiving" }]);
@@ -124,6 +152,17 @@ export function LocalSessionProvider({ children }: { children: ReactNode }) {
         addIncoming(meta.id, meta, meta.fromPeerName ?? peerName);
         setIncomingTransfers((prev) => prev.map((t) => (t.id === meta.id ? { ...t, status: "completed" as const } : t)));
       },
+      onReceiveInterrupted: (meta: LocalTransferMeta, chunks: ArrayBuffer[], bytesReceived: number) => {
+        pendingReceiveRef.current = { id: meta.id, meta, chunks, bytesReceived };
+        const pct = meta.size > 0 ? Math.round((bytesReceived / meta.size) * 100) : 0;
+        setError(`Connection lost mid-transfer. Ask them to scan/enter a new code to resume "${meta.name}" from ${pct}%.`);
+      },
+      onResumeOffsetReceived: (id: string, bytesReceived: number) => {
+        if (pendingSendRef.current?.id !== id) return;
+        const resolve = resumeOffsetResolverRef.current;
+        resumeOffsetResolverRef.current = null;
+        resolve?.(bytesReceived);
+      },
       onClose: () => removePeer(peerId),
       onRawMessage: (data: string | ArrayBuffer) => {
         // Roster updates (guest side only — host never receives these).
@@ -167,6 +206,45 @@ export function LocalSessionProvider({ children }: { children: ReactNode }) {
     }),
     [addIncoming, removePeer]
   );
+
+  /** Called once a fresh connection's channel is confirmed open (after a
+   * manual re-pair) — hands over anything left mid-receive from the last
+   * connection, and resumes anything left mid-send once the other side
+   * confirms how much it already has (or restarts it, if it turns out they
+   * have nothing — e.g. they reloaded the page and lost their partial state). */
+  const attemptResumeOnNewConnection = useCallback((conn: LocalPeerConnection) => {
+    const pendingReceive = pendingReceiveRef.current;
+    if (pendingReceive) {
+      pendingReceiveRef.current = null;
+      conn.primeResumedReceive(pendingReceive.meta, pendingReceive.chunks, pendingReceive.bytesReceived);
+      conn.sendResumeOffset(pendingReceive.id, pendingReceive.bytesReceived);
+    }
+
+    const pendingSend = pendingSendRef.current;
+    if (pendingSend) {
+      pendingSendRef.current = null;
+      const waitForResumeOffset = new Promise<number | null>((resolve) => {
+        resumeOffsetResolverRef.current = resolve;
+        setTimeout(() => {
+          if (resumeOffsetResolverRef.current === resolve) {
+            resumeOffsetResolverRef.current = null;
+            resolve(null);
+          }
+        }, RESUME_HANDSHAKE_TIMEOUT_MS);
+      });
+      void waitForResumeOffset.then((resumeOffset) => {
+        conn
+          .sendFile(pendingSend.id, pendingSend.file, pendingSend.kind, pendingSend.onProgress, pendingSend.broadcastMeta, resumeOffset ?? 0)
+          .catch((err: unknown) => {
+            if (err instanceof LocalTransferInterruptedError) {
+              pendingSendRef.current = pendingSend;
+            } else {
+              setError("Couldn't finish sending after reconnecting.");
+            }
+          });
+      });
+    }
+  }, []);
 
   // --- Host flow ---
 
@@ -240,6 +318,7 @@ export function LocalSessionProvider({ children }: { children: ReactNode }) {
           broadcastRoster(next);
           return next;
         });
+        attemptResumeOnNewConnection(conn);
       } catch (err) {
         setError(err instanceof Error ? err.message : "That code didn't work. Ask them to try again.");
       } finally {
@@ -247,7 +326,7 @@ export function LocalSessionProvider({ children }: { children: ReactNode }) {
         setConnecting(false);
       }
     },
-    [broadcastRoster, wireHandlers]
+    [broadcastRoster, wireHandlers, attemptResumeOnNewConnection]
   );
 
   // --- Guest flow ---
@@ -281,6 +360,7 @@ export function LocalSessionProvider({ children }: { children: ReactNode }) {
           .waitForChannelOpen(30 * 60 * 1000)
           .then(() => {
             setPeers((prev) => prev.map((p) => (p.id === payload.hostId ? { ...p, status: "connected" } : p)));
+            attemptResumeOnNewConnection(conn);
           })
           .catch(() => setError("Couldn't finish connecting. Ask the host to invite you again."));
 
@@ -296,22 +376,44 @@ export function LocalSessionProvider({ children }: { children: ReactNode }) {
         setConnecting(false);
       }
     },
-    [wireHandlers]
+    [wireHandlers, attemptResumeOnNewConnection]
   );
 
   // --- Sending ---
+
+  // No persistent signaling channel means an interrupted send can't
+  // auto-resume the way Quick Connect / Desktop LAN do — instead this stashes
+  // the pending state and surfaces a specific "ask them to re-pair" message,
+  // so a manual re-scan (handled by attemptResumeOnNewConnection above)
+  // continues the file instead of restarting it.
+  const runSend = useCallback(
+    async (conn: LocalPeerConnection, id: string, file: File, kind: "file" | "image", onProgress?: (sent: number, total: number) => void, broadcastMeta?: Partial<LocalTransferMeta>) => {
+      try {
+        await conn.sendFile(id, file, kind, onProgress, broadcastMeta);
+      } catch (err) {
+        if (err instanceof LocalTransferInterruptedError) {
+          const pct = file.size > 0 ? Math.round((err.offsetSent / file.size) * 100) : 0;
+          pendingSendRef.current = { id, file, kind, onProgress, broadcastMeta };
+          setError(`Connection lost mid-send. Ask them to scan/enter a new code to resume "${file.name}" from ${pct}%.`);
+          return;
+        }
+        throw err;
+      }
+    },
+    []
+  );
 
   const sendFile = useCallback(
     async (peerId: string | "all", file: File, kind: "file" | "image", onProgress?: (sent: number, total: number) => void) => {
       if (peerId === "all") {
         if (role === "host") {
           await Promise.all(
-            [...connectionsRef.current.values()].map((conn) => conn.sendFile(crypto.randomUUID(), file, kind, onProgress))
+            [...connectionsRef.current.values()].map((conn) => runSend(conn, crypto.randomUUID(), file, kind, onProgress))
           );
         } else {
           const host = [...connectionsRef.current.values()][0];
           if (!host) throw new Error("Not connected");
-          await host.sendFile(crypto.randomUUID(), file, kind, onProgress, {
+          await runSend(host, crypto.randomUUID(), file, kind, onProgress, {
             broadcast: true,
             fromPeerId: myPeerIdRef.current,
             fromPeerName: myName,
@@ -321,9 +423,9 @@ export function LocalSessionProvider({ children }: { children: ReactNode }) {
       }
       const conn = connectionsRef.current.get(peerId);
       if (!conn) throw new Error("Not connected to that device");
-      await conn.sendFile(crypto.randomUUID(), file, kind, onProgress);
+      await runSend(conn, crypto.randomUUID(), file, kind, onProgress);
     },
-    [role, myName]
+    [role, myName, runSend]
   );
 
   const sendText = useCallback(
@@ -359,6 +461,9 @@ export function LocalSessionProvider({ children }: { children: ReactNode }) {
     pendingConnectionRef.current?.close();
     pendingConnectionRef.current = null;
     relayingFromRef.current.clear();
+    pendingReceiveRef.current = null;
+    pendingSendRef.current = null;
+    resumeOffsetResolverRef.current = null;
     setRole("none");
     setPeers([]);
     setPendingInviteCode(null);
