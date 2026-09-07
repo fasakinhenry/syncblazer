@@ -13,6 +13,10 @@ const BUFFERED_AMOUNT_LOW_THRESHOLD = CHUNK_SIZE * 8;
 // "connects for me, hangs for everyone else." 10s is still bounded so the
 // UI never hangs forever on a truly stalled gather.
 const ICE_GATHERING_TIMEOUT_MS = 10000;
+// Same self-healing grace window as the "failed" backgrounded-tab handling
+// below, extended to also cover "disconnected" (see TrickleWebRTCPeer.ts,
+// which shares this reasoning).
+const DISCONNECT_GRACE_MS = 6000;
 
 /**
  * A full SDP carries a line for every network candidate the browser found —
@@ -71,10 +75,28 @@ export interface LocalTransferMeta {
   fromPeerName?: string;
 }
 
+/** Thrown by `sendFile` when the channel drops mid-send. Carries how far the
+ * send loop actually got — see TrickleWebRTCPeer.ts's identical class for
+ * the full reasoning (the two wire protocols are deliberately kept in sync). */
+export class LocalTransferInterruptedError extends Error {
+  readonly transferId: string;
+  readonly offsetSent: number;
+
+  constructor(transferId: string, offsetSent: number) {
+    super("Transfer interrupted");
+    this.name = "LocalTransferInterruptedError";
+    this.transferId = transferId;
+    this.offsetSent = offsetSent;
+  }
+}
+
 type LocalControlMessage =
   | { type: "meta"; meta: LocalTransferMeta }
   | { type: "done"; id: string }
-  | { type: "cancel"; id: string };
+  | { type: "cancel"; id: string }
+  // Receiver -> sender, unsolicited, sent the moment a channel (re)opens if
+  // a partial receive for `id` is still held.
+  | { type: "resumeOffset"; id: string; bytesReceived: number };
 
 export interface LocalPeerConnectionHandlers {
   onIncomingMeta?: (meta: LocalTransferMeta) => void;
@@ -90,6 +112,14 @@ export interface LocalPeerConnectionHandlers {
    * traffic is harmless to pass through here too; the orchestrator decides
    * whether to actually relay it. */
   onRawMessage?: (data: string | ArrayBuffer) => void;
+  /** The channel died while a receive was in progress. There's no persistent
+   * signaling channel here (see the class doc comment) so nothing
+   * auto-reconnects — this exists purely so a caller can offer "resume from
+   * X%" if the two devices manually re-pair. */
+  onReceiveInterrupted?: (meta: LocalTransferMeta, chunks: ArrayBuffer[], bytesReceived: number) => void;
+  /** A peer told us how much of a transfer it already has — resume `sendFile`
+   * from that offset instead of restarting, if the two devices re-pair. */
+  onResumeOffsetReceived?: (id: string, bytesReceived: number) => void;
 }
 
 export class LocalPeerConnection {
@@ -101,6 +131,9 @@ export class LocalPeerConnection {
   private incomingChunks: ArrayBuffer[] = [];
   private incomingBytes = 0;
   private sendCancelled = new Set<string>();
+  private sendControllers = new Map<string, AbortController>();
+  private disconnectGraceTimer: ReturnType<typeof setTimeout> | null = null;
+  private isDead = false;
 
   constructor(handlers: LocalPeerConnectionHandlers = {}) {
     this.handlers = handlers;
@@ -110,28 +143,49 @@ export class LocalPeerConnection {
     this.pc = new RTCPeerConnection({ iceServers: [] });
 
     this.pc.onconnectionstatechange = () => {
-      if (this.pc.connectionState === "closed") {
-        this.handlers.onClose?.();
+      const state = this.pc.connectionState;
+      if (state === "connected") {
+        if (this.disconnectGraceTimer) {
+          clearTimeout(this.disconnectGraceTimer);
+          this.disconnectGraceTimer = null;
+        }
         return;
       }
-      if (this.pc.connectionState === "failed") {
+      if (state === "closed") {
+        if (this.disconnectGraceTimer) {
+          clearTimeout(this.disconnectGraceTimer);
+          this.disconnectGraceTimer = null;
+        }
+        this.handleLinkDead();
+        return;
+      }
+      if ((state === "disconnected" || state === "failed") && !this.disconnectGraceTimer) {
         // Same reasoning as waitForChannelOpen: a background tab (very
         // normal mid-handshake here — you look away to go type a code on
-        // the other device) can make the browser report "failed" for
-        // reasons that have nothing to do with the connection once it's
-        // foregrounded again. Give it a few seconds to prove that's real
-        // before treating this peer as actually gone.
-        setTimeout(() => {
-          if (this.pc.connectionState === "failed" || this.pc.connectionState === "closed") {
-            this.handlers.onClose?.();
-          }
-        }, 5000);
+        // the other device) can make the browser report "disconnected" or
+        // "failed" for reasons that have nothing to do with the connection
+        // once it's foregrounded again. Give it a few seconds to prove
+        // that's real before treating this peer as actually gone.
+        this.disconnectGraceTimer = setTimeout(() => {
+          this.disconnectGraceTimer = null;
+          if (this.pc.connectionState !== "connected") this.handleLinkDead();
+        }, DISCONNECT_GRACE_MS);
       }
     };
     this.pc.ondatachannel = (event) => {
       this.channel = event.channel;
       this.wireChannel();
     };
+  }
+
+  private handleLinkDead() {
+    if (this.isDead) return;
+    this.isDead = true;
+    for (const controller of this.sendControllers.values()) controller.abort();
+    if (this.incomingMeta) {
+      this.handlers.onReceiveInterrupted?.(this.incomingMeta, this.incomingChunks, this.incomingBytes);
+    }
+    this.handlers.onClose?.();
   }
 
   /** Host side: create an offer and wait for ICE gathering to finish so the
@@ -255,8 +309,11 @@ export class LocalPeerConnection {
     this.channel.bufferedAmountLowThreshold = BUFFERED_AMOUNT_LOW_THRESHOLD;
 
     this.channel.onopen = () => this.handlers.onChannelOpen?.();
-    this.channel.onclose = () => this.handlers.onClose?.();
-    this.channel.onerror = () => this.handlers.onError?.("The local connection dropped.");
+    this.channel.onclose = () => this.handleLinkDead();
+    this.channel.onerror = () => {
+      this.handlers.onError?.("The local connection dropped.");
+      this.handleLinkDead();
+    };
 
     this.channel.onmessage = (event: MessageEvent<string | ArrayBuffer>) => {
       this.handlers.onRawMessage?.(event.data);
@@ -266,6 +323,23 @@ export class LocalPeerConnection {
         this.handleChunk(event.data);
       }
     };
+  }
+
+  /** Prime a fresh instance with an in-progress receive carried over from a
+   * dead connection (see `onReceiveInterrupted`) if the two devices manually
+   * re-pair — the resumed sender skips re-sending `meta` and picks up chunk
+   * delivery straight from `bytesReceived`. */
+  primeResumedReceive(meta: LocalTransferMeta, chunks: ArrayBuffer[], bytesReceived: number) {
+    this.incomingMeta = meta;
+    this.incomingChunks = chunks;
+    this.incomingBytes = bytesReceived;
+  }
+
+  /** Tell the other side how much of `id` we already have — sent unsolicited
+   * the moment a fresh channel opens if a partial receive is still held. */
+  sendResumeOffset(id: string, bytesReceived: number) {
+    if (!this.channel || this.channel.readyState !== "open") return;
+    this.channel.send(JSON.stringify({ type: "resumeOffset", id, bytesReceived } satisfies LocalControlMessage));
   }
 
   private handleControlMessage(message: LocalControlMessage) {
@@ -295,6 +369,11 @@ export class LocalPeerConnection {
       this.incomingMeta = null;
       this.incomingChunks = [];
       this.incomingBytes = 0;
+      return;
+    }
+
+    if (message.type === "resumeOffset") {
+      this.handlers.onResumeOffsetReceived?.(message.id, message.bytesReceived);
     }
   }
 
@@ -317,51 +396,76 @@ export class LocalPeerConnection {
     this.channel.send(JSON.stringify({ type: "meta", meta } satisfies LocalControlMessage));
   }
 
+  /** `resumeFromOffset` skips re-sending `meta` (the receiver already has it
+   * from the original attempt) and starts the chunked send loop partway
+   * through the file instead of from 0. On a mid-send drop, rejects with
+   * `LocalTransferInterruptedError` carrying how far the loop actually got —
+   * known limitation: a `File` object can't survive a page reload, so this
+   * only resumes drops within the same page session, not after a refresh. */
   async sendFile(
     id: string,
     file: File,
     kind: "file" | "image",
     onProgress?: (sent: number, total: number) => void,
-    broadcastMeta?: Partial<LocalTransferMeta>
+    broadcastMeta?: Partial<LocalTransferMeta>,
+    resumeFromOffset = 0
   ) {
     if (!this.channel || this.channel.readyState !== "open") throw new Error("Not connected");
     const channel = this.channel;
 
-    const meta: LocalTransferMeta = { id, name: file.name, size: file.size, mimeType: file.type, kind, ...broadcastMeta };
-    channel.send(JSON.stringify({ type: "meta", meta } satisfies LocalControlMessage));
+    const controller = new AbortController();
+    this.sendControllers.set(id, controller);
 
-    let offset = 0;
-    while (offset < file.size) {
-      if (this.sendCancelled.has(id)) {
-        this.sendCancelled.delete(id);
-        channel.send(JSON.stringify({ type: "cancel", id } satisfies LocalControlMessage));
-        return;
-      }
-      if (channel.bufferedAmount > BUFFERED_AMOUNT_LOW_THRESHOLD) {
-        await this.waitForBufferedAmountLow();
-      }
-      const slice = file.slice(offset, offset + CHUNK_SIZE);
-      const buffer = await slice.arrayBuffer();
-      channel.send(buffer);
-      offset += buffer.byteLength;
-      onProgress?.(offset, file.size);
+    if (resumeFromOffset === 0) {
+      const meta: LocalTransferMeta = { id, name: file.name, size: file.size, mimeType: file.type, kind, ...broadcastMeta };
+      channel.send(JSON.stringify({ type: "meta", meta } satisfies LocalControlMessage));
     }
 
-    channel.send(JSON.stringify({ type: "done", id } satisfies LocalControlMessage));
+    let offset = resumeFromOffset;
+    try {
+      while (offset < file.size) {
+        if (controller.signal.aborted) throw new LocalTransferInterruptedError(id, offset);
+        if (this.sendCancelled.has(id)) {
+          this.sendCancelled.delete(id);
+          channel.send(JSON.stringify({ type: "cancel", id } satisfies LocalControlMessage));
+          return;
+        }
+        if (channel.bufferedAmount > BUFFERED_AMOUNT_LOW_THRESHOLD) {
+          await this.waitForBufferedAmountLow(controller.signal);
+          if (controller.signal.aborted) throw new LocalTransferInterruptedError(id, offset);
+        }
+        const slice = file.slice(offset, offset + CHUNK_SIZE);
+        const buffer = await slice.arrayBuffer();
+        if (controller.signal.aborted || channel.readyState !== "open") throw new LocalTransferInterruptedError(id, offset);
+        channel.send(buffer);
+        offset += buffer.byteLength;
+        onProgress?.(offset, file.size);
+      }
+
+      channel.send(JSON.stringify({ type: "done", id } satisfies LocalControlMessage));
+    } finally {
+      this.sendControllers.delete(id);
+    }
   }
 
   cancelSend(id: string) {
     this.sendCancelled.add(id);
   }
 
-  private waitForBufferedAmountLow(): Promise<void> {
+  private waitForBufferedAmountLow(signal?: AbortSignal): Promise<void> {
     return new Promise((resolve) => {
       if (!this.channel) return resolve();
       const handler = () => {
         this.channel?.removeEventListener("bufferedamountlow", handler);
+        signal?.removeEventListener("abort", onAbort);
+        resolve();
+      };
+      const onAbort = () => {
+        this.channel?.removeEventListener("bufferedamountlow", handler);
         resolve();
       };
       this.channel.addEventListener("bufferedamountlow", handler);
+      signal?.addEventListener("abort", onAbort);
     });
   }
 

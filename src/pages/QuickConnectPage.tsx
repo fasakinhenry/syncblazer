@@ -6,6 +6,7 @@ import {
   ChatText,
   Copy,
   CloudCheck,
+  DeviceMobile,
   PaperPlaneTilt,
   Plus,
   ShareNetwork,
@@ -17,6 +18,7 @@ import {
 } from "@phosphor-icons/react";
 import { useQuickPair } from "@/context/QuickPairContext.tsx";
 import { useToast } from "@/context/ToastContext.tsx";
+import { useWakeLock } from "@/hooks/useWakeLock.ts";
 import { detectDeviceInfo } from "@/lib/deviceInfo.ts";
 import { formatBytes } from "@/lib/format.ts";
 import { LocalQrScanner } from "@/components/localSession/LocalQrScanner.tsx";
@@ -40,7 +42,7 @@ function normalizeCode(raw: string): string {
 }
 
 export function QuickConnectPage() {
-  const { role, code, peers, connecting, error, startSession, joinSession, leaveSession, sendFile, sendText } = useQuickPair();
+  const { role, code, peers, incomingTransfers, connecting, error, startSession, joinSession, leaveSession, sendFile, sendText } = useQuickPair();
   const { toast } = useToast();
 
   const [nameInput, setNameInput] = useState(suggestedName());
@@ -63,6 +65,9 @@ export function QuickConnectPage() {
     if (isNew) setCelebrateConnection(true);
     knownConnectedIdsRef.current = new Set(nowConnected);
   }, [peers]);
+
+  const transferActive = sending || incomingTransfers.some((t) => t.status === "receiving");
+  useWakeLock(transferActive);
 
   const triggerSend = (target: string | "all") => {
     setSendTarget(target);
@@ -278,6 +283,13 @@ export function QuickConnectPage() {
       </div>
 
       {error && <p className="text-sm text-danger">{error}</p>}
+
+      {transferActive && (
+        <div className="flex items-center gap-2 rounded-lg bg-brand-soft px-3 py-2 text-xs text-brand">
+          <DeviceMobile className="h-3.5 w-3.5 shrink-0" />
+          Keep this screen open while sending — switching to another app can pause the transfer.
+        </div>
+      )}
 
       {canBroadcast && (
         <Card className="flex flex-col gap-3 border-brand/30 bg-brand-soft p-4">
