@@ -1,5 +1,10 @@
-import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from "react";
-import { TrickleWebRTCPeer, TransferInterruptedError, type TrickleTransferMeta } from "@/lib/webrtc/TrickleWebRTCPeer.ts";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  TrickleWebRTCPeer,
+  TransferInterruptedError,
+  type TrickleTransferMeta,
+  type TrickleWebRTCPeerHandlers,
+} from "@/lib/webrtc/TrickleWebRTCPeer.ts";
 import { isTauri, getLanInfo } from "@/lib/tauri.ts";
 
 type SessionRole = "none" | "host" | "guest";
@@ -203,6 +208,14 @@ export function LanPairProvider({ children }: { children: ReactNode }) {
     [attemptSend]
   );
 
+  // Reconnect (below) needs to call makeHandlers again to wire a fresh
+  // connection, but that call only ever happens later, asynchronously, from
+  // inside a closure makeHandlers itself returns — never during its own
+  // construction. Routing it through a ref (always pointing at the latest
+  // makeHandlers) avoids the self-reference entirely rather than relying on
+  // that timing guarantee.
+  const makeHandlersRef = useRef<(peerId: string, peerName: string) => TrickleWebRTCPeerHandlers>(null!);
+
   const makeHandlers = useCallback(
     (peerId: string, peerName: string) => ({
       onIncomingMeta: (meta: TrickleTransferMeta) => {
@@ -247,7 +260,7 @@ export function LanPairProvider({ children }: { children: ReactNode }) {
             // The peer may have fully left, or we may have left the session
             // entirely, by the time this fires — both clear initiatorsRef.
             if (!initiatorsRef.current.has(peerId)) return;
-            const freshConn = new TrickleWebRTCPeer(sendSignalTo(code)(peerId), makeHandlers(peerId, peerName));
+            const freshConn = new TrickleWebRTCPeer(sendSignalTo(code)(peerId), makeHandlersRef.current(peerId, peerName));
             connectionsRef.current.set(peerId, freshConn);
             freshConn.connect().catch(() => setError(`Couldn't reconnect to ${peerName}.`));
           }, RECONNECT_DELAY_MS);
@@ -257,6 +270,9 @@ export function LanPairProvider({ children }: { children: ReactNode }) {
     }),
     [addIncoming, handleResumeOnOpen, sendSignalTo]
   );
+  useEffect(() => {
+    makeHandlersRef.current = makeHandlers;
+  }, [makeHandlers]);
 
   const connect = useCallback(
     (wsUrl: string, code: string, name: string): Promise<void> => {
