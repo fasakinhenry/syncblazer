@@ -171,11 +171,13 @@ body {
   text-decoration: underline;
 }
 
-/* Live collaborative cursors (see NoteEditor.tsx's renderCollaborationCaret)
- * — a small avatar bubble floating above the caret line, name on hover via
- * the native title attribute. */
+/* Live collaborative cursors (see NoteEditor.tsx's createCaretRenderer) — a
+ * small, clickable avatar bubble floating above (and above everything
+ * else, via z-index) the caret line; name on hover via the native title
+ * attribute, click opens UserDetailsModal. */
 .collaboration-carets__caret {
   position: relative;
+  z-index: 10;
   border-left: 2px solid;
   margin-left: -1px;
   word-break: normal;
@@ -183,6 +185,7 @@ body {
 }
 .collaboration-carets__avatar {
   position: absolute;
+  z-index: 20;
   top: -1.65em;
   left: -0.7em;
   display: flex;
@@ -196,6 +199,7 @@ body {
   color: #fff;
   font-size: 0.6em;
   font-weight: 700;
+  cursor: pointer;
   object-fit: cover;
   pointer-events: auto;
   user-select: none;

@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { Fire, SignIn } from "@phosphor-icons/react";
+import { SignIn } from "@phosphor-icons/react";
 import { api, ApiClientError } from "@/lib/api.ts";
 import type { PublicNote } from "@/lib/types.ts";
 import { useAuth } from "@/context/AuthContext.tsx";
 import { Avatar } from "@/components/Avatar.tsx";
 import { NoteEditor } from "@/components/notes/NoteEditor.tsx";
+import { PublicNoteHeader } from "@/components/notes/PublicNoteHeader.tsx";
 import { Button } from "@/components/ui/Button.tsx";
 import { EmptyState } from "@/components/ui/EmptyState.tsx";
 import { PageSpinner } from "@/components/ui/Spinner.tsx";
@@ -16,7 +17,10 @@ import { SharedNoteWorkspace } from "@/pages/SharedNoteWorkspace.tsx";
  * shared note always requires being signed in — see SharedNoteWorkspace,
  * which this delegates to once someone's authenticated — so this page
  * never renders an editable field, even when the owner turned on edit
- * access; it just prompts an unauthenticated visitor to sign in instead. */
+ * access; it just prompts an unauthenticated visitor to sign in instead.
+ * PublicNoteHeader already carries a general "Log in" CTA for any visitor;
+ * the banner below is specifically for the case where signing in would
+ * additionally unlock editing this particular note. */
 function AnonymousPublicNote({ token }: { token: string }) {
   const [note, setNote] = useState<PublicNote | null>(null);
   const [owner, setOwner] = useState<{ name: string; avatarUrl?: string } | null>(null);
@@ -67,17 +71,17 @@ function AnonymousPublicNote({ token }: { token: string }) {
             onFontChange={() => {}}
           />
 
-          {note.access === "edit" && (
-            <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface-hover p-3">
-              <p className="text-xs text-text-secondary">This note can be edited — sign in to make changes.</p>
-              <Link to="/login">
-                <Button size="sm" variant="secondary" className="gap-1.5">
-                  <SignIn className="h-3.5 w-3.5" />
-                  Sign in
-                </Button>
-              </Link>
-            </div>
-          )}
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface-hover p-3">
+            <p className="text-xs text-text-secondary">
+              {note.access === "edit" ? "This note can be edited — sign in to make changes." : "Sign in to SyncBlaze to make your own notes."}
+            </p>
+            <Link to="/login">
+              <Button size="sm" variant="secondary" className="gap-1.5">
+                <SignIn className="h-3.5 w-3.5" />
+                Sign in
+              </Button>
+            </Link>
+          </div>
 
           <p className="text-center text-xs text-text-secondary">
             Made with{" "}
@@ -103,14 +107,7 @@ export function PublicNotePage() {
 
   return (
     <div className="min-h-dvh bg-background">
-      <header className="border-b border-border px-4 py-4 md:px-8">
-        <Link to="/" className="flex items-center gap-2">
-          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand">
-            <Fire weight="fill" className="h-4 w-4 text-white" />
-          </span>
-          <span className="font-display text-base font-semibold text-text-primary">SyncBlaze</span>
-        </Link>
-      </header>
+      <PublicNoteHeader />
       <AnonymousPublicNote token={token} />
     </div>
   );

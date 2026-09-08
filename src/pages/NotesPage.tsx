@@ -39,6 +39,7 @@ import { DEFAULT_NOTE_FONT } from "@/lib/noteFonts.ts";
 import { downloadTextFile, markdownToPlainText, sanitizeFilename } from "@/lib/markdownToPlainText.ts";
 import { NoteEditor } from "@/components/notes/NoteEditor.tsx";
 import { NoteWatchersRow } from "@/components/notes/NoteWatchersRow.tsx";
+import { UserDetailsModal, type SelectedCollaborator } from "@/components/notes/UserDetailsModal.tsx";
 import { GuestEditBlockedBanner } from "@/components/notes/GuestEditBlockedBanner.tsx";
 import { ShareNoteModal } from "@/components/notes/ShareNoteModal.tsx";
 import { NoteActivityPanel } from "@/components/notes/NoteActivityPanel.tsx";
@@ -70,6 +71,7 @@ export function NotesPage() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [selectedCollaborator, setSelectedCollaborator] = useState<SelectedCollaborator | null>(null);
 
   const lastLocalEditAt = useRef(0);
   // Version we last saved or applied per note, so an echo of our own save
@@ -709,9 +711,12 @@ export function NotesPage() {
               onUpdateMarkdown={onChangeContent}
               onFontChange={onChangeFont}
               collab={collab}
+              onSelectCollaborator={setSelectedCollaborator}
             />
 
-            {collab && <NoteWatchersRow watchers={collab.watchers} total={collab.totalWatchers} />}
+            {collab && (
+              <NoteWatchersRow watchers={collab.watchers} total={collab.totalWatchers} onSelect={setSelectedCollaborator} />
+            )}
 
             <LinkPreviewCards markdown={draftContent} />
             {selectedRoom && <NoteActivityPanel noteId={selected._id} roomId={selected.roomId} />}
@@ -733,6 +738,8 @@ export function NotesPage() {
           <EmptyState title="Select a note" description="Choose a note from the list, or create a new one." />
         )}
       </div>
+
+      <UserDetailsModal user={selectedCollaborator} onClose={() => setSelectedCollaborator(null)} />
     </div>
   );
 }

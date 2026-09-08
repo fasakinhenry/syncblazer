@@ -10,6 +10,7 @@ import { NOTE_YJS_FIELD } from "@/lib/noteYjsSeed.ts";
 import type { NoteCollabHandle } from "@/hooks/useNoteCollab.ts";
 import { NoteEditorToolbar } from "@/components/notes/NoteEditorToolbar.tsx";
 import { NoteContextMenu, type ContextMenuItem } from "@/components/notes/NoteContextMenu.tsx";
+import type { SelectedCollaborator } from "@/components/notes/UserDetailsModal.tsx";
 
 function getMarkdown(editor: Editor): string {
   return (editor.storage as unknown as { markdown: { getMarkdown: () => string } }).markdown.getMarkdown();
@@ -19,33 +20,46 @@ interface CaretUser {
   name?: string;
   color?: string;
   avatarUrl?: string;
+  email?: string;
 }
 
-/** Custom cursor for another live collaborator: a small avatar bubble
- * floating above the caret line instead of TipTap's default text-label
- * pill — hovering it (native title attribute) shows the person's name. */
-function renderCollaborationCaret(user: CaretUser): HTMLElement {
-  const color = typeof user.color === "string" && /^#[0-9a-fA-F]{6}$/.test(user.color) ? user.color : "#94a3b8";
-  const name = user.name || "Someone";
+/** Custom cursor for another live collaborator: a small, clickable avatar
+ * bubble floating above the caret line instead of TipTap's default
+ * text-label pill — hovering it (native title attribute) shows the
+ * person's name, clicking it opens UserDetailsModal. `onClickRef` is a ref
+ * (not the callback directly) so this renderer stays a stable function —
+ * it's only ever created once per editor instance, but should always call
+ * whatever the latest onSelectCollaborator prop is. */
+function createCaretRenderer(onClickRef: { current: (user: CaretUser) => void }) {
+  return (user: CaretUser): HTMLElement => {
+    const color = typeof user.color === "string" && /^#[0-9a-fA-F]{6}$/.test(user.color) ? user.color : "#94a3b8";
+    const name = user.name || "Someone";
 
-  const caret = document.createElement("span");
-  caret.classList.add("collaboration-carets__caret");
-  caret.style.borderColor = color;
+    const caret = document.createElement("span");
+    caret.classList.add("collaboration-carets__caret");
+    caret.style.borderColor = color;
 
-  const avatar = document.createElement(user.avatarUrl ? "img" : "span");
-  avatar.classList.add("collaboration-carets__avatar");
-  avatar.style.borderColor = color;
-  avatar.title = name;
-  if (user.avatarUrl) {
-    (avatar as HTMLImageElement).src = user.avatarUrl;
-    (avatar as HTMLImageElement).alt = name;
-  } else {
-    avatar.textContent = name.charAt(0).toUpperCase();
-    avatar.style.backgroundColor = color;
-  }
-  caret.appendChild(avatar);
+    const avatar = document.createElement(user.avatarUrl ? "img" : "span");
+    avatar.classList.add("collaboration-carets__avatar");
+    avatar.style.borderColor = color;
+    avatar.title = name;
+    avatar.setAttribute("role", "button");
+    avatar.tabIndex = 0;
+    if (user.avatarUrl) {
+      (avatar as HTMLImageElement).src = user.avatarUrl;
+      (avatar as HTMLImageElement).alt = name;
+    } else {
+      avatar.textContent = name.charAt(0).toUpperCase();
+      avatar.style.backgroundColor = color;
+    }
+    avatar.addEventListener("click", (e) => {
+      e.stopPropagation();
+      onClickRef.current(user);
+    });
+    caret.appendChild(avatar);
 
-  return caret;
+    return caret;
+  };
 }
 
 interface NoteEditorProps {
@@ -63,13 +77,31 @@ interface NoteEditorProps {
    * useNoteCollab.ts. Omitted/not-ready falls back to today's plain-text
    * editor (offline, or before the collab join handshake completes). */
   collab?: NoteCollabHandle | null;
+  /** Clicking a live cursor's avatar opens UserDetailsModal with this. */
+  onSelectCollaborator?: (user: SelectedCollaborator) => void;
 }
 
-export function NoteEditor({ noteId, initialContent, fontFamily, editable, onUpdateMarkdown, onFontChange, collab }: NoteEditorProps) {
+export function NoteEditor({
+  noteId,
+  initialContent,
+  fontFamily,
+  editable,
+  onUpdateMarkdown,
+  onFontChange,
+  collab,
+  onSelectCollaborator,
+}: NoteEditorProps) {
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const activeCollab = collab?.ready ? collab : null;
+
+  const onSelectCollaboratorRef = useRef(onSelectCollaborator);
+  onSelectCollaboratorRef.current = onSelectCollaborator;
+  const caretClickRef = useRef((user: CaretUser) => {
+    onSelectCollaboratorRef.current?.({ name: user.name || "Someone", email: user.email, avatarUrl: user.avatarUrl });
+  });
+  const caretRenderer = useRef(createCaretRenderer(caretClickRef)).current;
 
   const editor = useEditor(
     {
@@ -81,7 +113,7 @@ export function NoteEditor({ noteId, initialContent, fontFamily, editable, onUpd
               CollaborationCaret.configure({
                 provider: { awareness: activeCollab.awareness },
                 user: activeCollab.localUser,
-                render: renderCollaborationCaret,
+                render: caretRenderer,
               }),
             ]
           : []),

@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Fire, PencilSimple } from "@phosphor-icons/react";
+import { PencilSimple } from "@phosphor-icons/react";
 import { api, ApiClientError } from "@/lib/api.ts";
 import type { Note } from "@/lib/types.ts";
 import { DEFAULT_NOTE_FONT } from "@/lib/noteFonts.ts";
 import { useNoteCollab } from "@/hooks/useNoteCollab.ts";
 import { NoteEditor } from "@/components/notes/NoteEditor.tsx";
 import { NoteWatchersRow } from "@/components/notes/NoteWatchersRow.tsx";
+import { UserDetailsModal, type SelectedCollaborator } from "@/components/notes/UserDetailsModal.tsx";
 import { GuestEditBlockedBanner } from "@/components/notes/GuestEditBlockedBanner.tsx";
+import { PublicNoteHeader } from "@/components/notes/PublicNoteHeader.tsx";
 import { EmptyState } from "@/components/ui/EmptyState.tsx";
 import { PageSpinner } from "@/components/ui/Spinner.tsx";
 
@@ -28,6 +30,7 @@ export function SharedNoteWorkspace({ token }: { token: string }) {
   const [draftContent, setDraftContent] = useState("");
   const [draftFont, setDraftFont] = useState(DEFAULT_NOTE_FONT);
   const [saving, setSaving] = useState(false);
+  const [selectedCollaborator, setSelectedCollaborator] = useState<SelectedCollaborator | null>(null);
 
   const pendingPatchRef = useRef<{ title?: string; content?: string; fontFamily?: string }>({});
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -110,14 +113,7 @@ export function SharedNoteWorkspace({ token }: { token: string }) {
 
   return (
     <div className="min-h-dvh bg-background">
-      <header className="border-b border-border px-4 py-4 md:px-8">
-        <Link to="/" className="flex items-center gap-2">
-          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand">
-            <Fire weight="fill" className="h-4 w-4 text-white" />
-          </span>
-          <span className="font-display text-base font-semibold text-text-primary">SyncBlaze</span>
-        </Link>
-      </header>
+      <PublicNoteHeader />
 
       <main className="mx-auto max-w-2xl px-4 py-10">
         {error ? (
@@ -155,9 +151,12 @@ export function SharedNoteWorkspace({ token }: { token: string }) {
               onUpdateMarkdown={onChangeContent}
               onFontChange={onChangeFont}
               collab={collab}
+              onSelectCollaborator={setSelectedCollaborator}
             />
 
-            {collab && <NoteWatchersRow watchers={collab.watchers} total={collab.totalWatchers} />}
+            {collab && (
+              <NoteWatchersRow watchers={collab.watchers} total={collab.totalWatchers} onSelect={setSelectedCollaborator} />
+            )}
 
             <p className="text-center text-xs text-text-secondary">
               Made with{" "}
@@ -168,6 +167,8 @@ export function SharedNoteWorkspace({ token }: { token: string }) {
           </div>
         )}
       </main>
+
+      <UserDetailsModal user={selectedCollaborator} onClose={() => setSelectedCollaborator(null)} />
     </div>
   );
 }

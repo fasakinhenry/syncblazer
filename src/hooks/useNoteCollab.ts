@@ -18,12 +18,14 @@ export interface CollabPresence {
   name: string;
   color: string;
   avatarUrl?: string;
+  email?: string;
 }
 
 export interface NoteWatcher {
   userId: string;
   name: string;
   avatarUrl?: string;
+  email?: string;
   canEdit: boolean;
 }
 
@@ -48,7 +50,7 @@ export interface NoteCollabHandle {
   /** The caret extension needs the local user's own name/color up front —
    * computed the same way the awareness state below is, so there's one
    * source of truth instead of the caller re-deriving it separately. */
-  localUser: { name: string; color: string; avatarUrl?: string };
+  localUser: { name: string; color: string; avatarUrl?: string; email?: string };
 }
 
 /** Owns a note's live Yjs document + awareness (cursor/presence) state and
@@ -73,7 +75,12 @@ export function useNoteCollab(noteId: string | null, initialMarkdown: string): N
   const doc = useMemo(() => new Y.Doc(), [noteId]);
   const awareness = useMemo(() => new Awareness(doc), [doc]);
   const localUser = useMemo(
-    () => ({ name: user?.name ?? "Someone", color: colorForUser(user?.id ?? "anon"), avatarUrl: user?.avatarUrl }),
+    () => ({
+      name: user?.name ?? "Someone",
+      color: colorForUser(user?.id ?? "anon"),
+      avatarUrl: user?.avatarUrl,
+      email: user?.email,
+    }),
     [user]
   );
 
@@ -148,6 +155,7 @@ export function useNoteCollab(noteId: string | null, initialMarkdown: string): N
           name: (state.user?.name as string) ?? "Someone",
           color: (state.user?.color as string) ?? "#94a3b8",
           avatarUrl: state.user?.avatarUrl as string | undefined,
+          email: state.user?.email as string | undefined,
         }));
       setPresence(states);
     };
