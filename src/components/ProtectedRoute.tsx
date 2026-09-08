@@ -1,6 +1,8 @@
 import { Navigate, Outlet } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext.tsx";
 import { PageSpinner } from "@/components/ui/Spinner.tsx";
+import { isTauri } from "@/lib/tauri.ts";
+import { DesktopOnboardingPage, hasSeenDesktopOnboarding } from "@/pages/desktop/DesktopOnboardingPage.tsx";
 
 export function ProtectedRoute() {
   const { status } = useAuth();
@@ -20,12 +22,20 @@ export function GuestRoute() {
   return <Outlet />;
 }
 
-/** Landing page: shown to signed-out visitors, skipped straight to the app for signed-in users. */
+/** Landing page: shown to signed-out visitors, skipped straight to the app
+ * for signed-in users. In the desktop app there's no marketing page to show
+ * at all — a first-run visitor gets the onboarding carousel instead, and a
+ * returning signed-out one skips straight to sign-in. */
 export function PublicRoute() {
   const { status } = useAuth();
 
   if (status === "loading") return <PageSpinner />;
   if (status === "authenticated") return <Navigate to="/room" replace />;
+
+  if (isTauri()) {
+    if (hasSeenDesktopOnboarding()) return <Navigate to="/login" replace />;
+    return <DesktopOnboardingPage />;
+  }
 
   return <Outlet />;
 }

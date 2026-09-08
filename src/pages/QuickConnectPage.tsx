@@ -43,7 +43,7 @@ function normalizeCode(raw: string): string {
 
 export function QuickConnectPage() {
   const { role, code, peers, incomingTransfers, connecting, error, startSession, joinSession, leaveSession, sendFile, sendText } = useQuickPair();
-  const { toast } = useToast();
+  const { toast, updateToast } = useToast();
 
   const [nameInput, setNameInput] = useState(suggestedName());
   const [intent, setIntent] = useState<"none" | "host" | "guest">("none");
@@ -91,11 +91,23 @@ export function QuickConnectPage() {
     const kind = file.type.startsWith("image/") ? "image" : "file";
     setSending(true);
     setSendProgress({ target, sent: 0, total: file.size });
+    // A live-updating toast, not a one-shot at the end — the sender has
+    // nothing to click (nothing to download), so the toast IS their whole
+    // feedback loop: it tracks progress and settles on plain "Sent" text.
+    const toastId = toast(`Sending "${file.name}"… 0%`, "info");
+    let lastToastPercent = 0;
     try {
-      await sendFile(target, file, kind, (sentBytes, totalBytes) => setSendProgress({ target, sent: sentBytes, total: totalBytes }));
-      toast(target === "all" ? `Sent "${file.name}" to everyone` : `Sent "${file.name}"`, "success");
+      await sendFile(target, file, kind, (sentBytes, totalBytes) => {
+        setSendProgress({ target, sent: sentBytes, total: totalBytes });
+        const percent = totalBytes > 0 ? Math.round((sentBytes / totalBytes) * 100) : 0;
+        if (percent >= lastToastPercent + 5 || percent === 100) {
+          lastToastPercent = percent;
+          updateToast(toastId, `Sending "${file.name}"… ${percent}%`, "info");
+        }
+      });
+      updateToast(toastId, target === "all" ? `Sent "${file.name}" to everyone` : `Sent "${file.name}"`, "success");
     } catch {
-      toast("Couldn't send that file", "error");
+      updateToast(toastId, "Couldn't send that file", "error");
     } finally {
       setSending(false);
       setSendProgress(null);

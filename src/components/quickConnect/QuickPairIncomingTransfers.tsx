@@ -1,16 +1,7 @@
-import { useState } from "react";
-import { DownloadSimple, File as FileIcon, Image as ImageIcon, Link as LinkIcon, TextAa, X } from "@phosphor-icons/react";
+import { useEffect, useRef } from "react";
 import { useQuickPair } from "@/context/QuickPairContext.tsx";
-import { formatBytes } from "@/lib/format.ts";
-import type { TrickleTransferKind } from "@/lib/webrtc/TrickleWebRTCPeer.ts";
-import { ConfettiBurst } from "@/components/ConfettiBurst.tsx";
-
-const KIND_ICON: Record<TrickleTransferKind, typeof FileIcon> = {
-  file: FileIcon,
-  image: ImageIcon,
-  text: TextAa,
-  link: LinkIcon,
-};
+import { useToast } from "@/context/ToastContext.tsx";
+import { TransferPanel, type TransferPanelItem } from "@/components/transfers/TransferPanel.tsx";
 
 function downloadBlob(blob: Blob, name: string) {
   const url = URL.createObjectURL(blob);
@@ -25,61 +16,47 @@ function downloadBlob(blob: Blob, name: string) {
 
 export function QuickPairIncomingTransfers() {
   const { incomingTransfers, dismissIncoming } = useQuickPair();
-  const [celebrate, setCelebrate] = useState(false);
-  if (incomingTransfers.length === 0) return null;
+  const { toast } = useToast();
+  const knownCompletedRef = useRef<Set<string>>(new Set());
+
+  // A one-shot nudge the moment a transfer finishes, on top of the
+  // persistent panel below — the panel is where you actually download from,
+  // this is just so the moment isn't missed if it's collapsed.
+  useEffect(() => {
+    const completed = incomingTransfers.filter((t) => t.status === "completed");
+    for (const t of completed) {
+      if (!knownCompletedRef.current.has(t.id)) {
+        toast(
+          t.meta.kind === "text" || t.meta.kind === "link"
+            ? `Received from ${t.fromPeerName}`
+            : `"${t.meta.name}" received from ${t.fromPeerName}`,
+          "success"
+        );
+      }
+    }
+    knownCompletedRef.current = new Set(completed.map((t) => t.id));
+  }, [incomingTransfers, toast]);
+
+  const items: TransferPanelItem[] = incomingTransfers.map((t) => ({
+    id: t.id,
+    name: t.meta.name,
+    size: t.meta.size,
+    kind: t.meta.kind,
+    status: t.status,
+    percent: t.meta.size > 0 ? Math.round((t.bytesTransferred / t.meta.size) * 100) : 100,
+    fromLabel: `From ${t.fromPeerName}`,
+    textContent: t.meta.textContent,
+  }));
 
   return (
-    <div className="fixed bottom-20 right-4 z-50 flex w-full max-w-xs flex-col gap-2 md:bottom-6">
-      <ConfettiBurst active={celebrate} onComplete={() => setCelebrate(false)} />
-      {incomingTransfers.map((t) => {
-        const Icon = KIND_ICON[t.meta.kind];
-        const percent = t.meta.size > 0 ? Math.round((t.bytesTransferred / t.meta.size) * 100) : 100;
-        return (
-          <div key={t.id} className="rounded-xl border border-border bg-surface p-4 shadow-lg">
-            <div className="flex items-start gap-3">
-              <Icon className="mt-0.5 h-5 w-5 shrink-0 text-brand" />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-text-primary">{t.meta.name}</p>
-                <p className="text-xs text-text-secondary">
-                  From {t.fromPeerName} · {t.status === "completed" ? "Received" : `${percent}%`}
-                  {t.meta.size > 0 ? ` · ${formatBytes(t.meta.size)}` : ""}
-                </p>
-              </div>
-              <button onClick={() => dismissIncoming(t.id)} aria-label="Dismiss" className="shrink-0 rounded-md p-1 text-text-secondary hover:bg-surface-hover">
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            {t.status === "receiving" && (t.meta.kind === "file" || t.meta.kind === "image") && (
-              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-surface-hover">
-                <div className="h-full bg-brand transition-all" style={{ width: `${percent}%` }} />
-              </div>
-            )}
-
-            {t.status === "completed" && t.blob && (
-              <button
-                onClick={() => {
-                  downloadBlob(t.blob!, t.meta.name);
-                  setCelebrate(true);
-                }}
-                className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg bg-brand py-2 text-sm font-medium text-white hover:bg-brand-hover"
-              >
-                <DownloadSimple className="h-4 w-4" />
-                Save file
-              </button>
-            )}
-
-            {t.status === "completed" && (t.meta.kind === "text" || t.meta.kind === "link") && (
-              <button
-                onClick={() => navigator.clipboard.writeText(t.meta.textContent ?? "")}
-                className="mt-3 w-full rounded-lg border border-border py-2 text-sm font-medium text-text-primary hover:bg-surface-hover"
-              >
-                Copy
-              </button>
-            )}
-          </div>
-        );
-      })}
-    </div>
+    <TransferPanel
+      items={items}
+      onDismiss={dismissIncoming}
+      onDownload={(item) => {
+        const t = incomingTransfers.find((x) => x.id === item.id);
+        if (t?.blob) downloadBlob(t.blob, t.meta.name);
+      }}
+      onCopy={(item) => void navigator.clipboard.writeText(item.textContent ?? "")}
+    />
   );
 }

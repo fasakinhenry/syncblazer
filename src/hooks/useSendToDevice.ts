@@ -9,7 +9,7 @@ import { getCurrentDevice } from "@/lib/deviceInfo.ts";
  * result as a real Transfer either way so history stays accurate. */
 export function useSendToDevice(roomId: string | undefined) {
   const { sendFile: sendFileP2P } = usePeerTransfer();
-  const { toast } = useToast();
+  const { toast, updateToast } = useToast();
   const [sendingTo, setSendingTo] = useState<string | null>(null);
 
   const send = async (targetDeviceId: string, targetDeviceName: string, file: File) => {
@@ -21,9 +21,18 @@ export function useSendToDevice(roomId: string | undefined) {
 
     setSendingTo(targetDeviceId);
     const kind = file.type.startsWith("image/") ? "image" : "file";
+    const toastId = toast(`Sending "${file.name}"… 0%`, "info");
+    let lastToastPercent = 0;
+    const onProgress = (sentBytes: number, totalBytes: number) => {
+      const percent = totalBytes > 0 ? Math.round((sentBytes / totalBytes) * 100) : 0;
+      if (percent >= lastToastPercent + 5 || percent === 100) {
+        lastToastPercent = percent;
+        updateToast(toastId, `Sending "${file.name}"… ${percent}%`, "info");
+      }
+    };
 
     try {
-      const p2p = await sendFileP2P(targetDeviceId, file, kind);
+      const p2p = await sendFileP2P(targetDeviceId, file, kind, onProgress);
 
       if (p2p.ok) {
         const { transfer } = await api.transfers.create({
@@ -37,12 +46,18 @@ export function useSendToDevice(roomId: string | undefined) {
           transferMethod: "local",
         });
         await api.transfers.updateStatus(transfer._id, { status: "completed", progress: 100 });
-        toast(`Blazed "${file.name}" directly to ${targetDeviceName}`, "success");
+        updateToast(toastId, `Sent "${file.name}" to ${targetDeviceName}`, "success");
         return;
       }
 
-      toast(`Direct connection unavailable, sending "${file.name}" via cloud instead`, "info");
-      const uploaded = await api.uploads.uploadWithProgress(file, () => {});
+      lastToastPercent = 0;
+      updateToast(toastId, `Direct connection unavailable — sending "${file.name}" via cloud instead… 0%`, "info");
+      const uploaded = await api.uploads.uploadWithProgress(file, (percent) => {
+        if (percent >= lastToastPercent + 5 || percent === 100) {
+          lastToastPercent = percent;
+          updateToast(toastId, `Sending "${file.name}"… ${percent}%`, "info");
+        }
+      });
       const { transfer } = await api.transfers.create({
         roomId,
         senderDeviceId: currentDevice._id,
@@ -55,9 +70,9 @@ export function useSendToDevice(roomId: string | undefined) {
         transferMethod: "cloud",
       });
       await api.transfers.updateStatus(transfer._id, { status: "completed", progress: 100 });
-      toast(`Blazed "${file.name}" to ${targetDeviceName}`, "success");
+      updateToast(toastId, `Sent "${file.name}" to ${targetDeviceName}`, "success");
     } catch {
-      toast(`Couldn't send "${file.name}". Please try again.`, "error");
+      updateToast(toastId, `Couldn't send "${file.name}". Please try again.`, "error");
     } finally {
       setSendingTo(null);
     }
