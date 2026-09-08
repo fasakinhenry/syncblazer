@@ -217,8 +217,10 @@ export const api = {
       apiFetch<{ note: PublicNote; owner: { name: string; avatarUrl?: string } | null }>(`/notes/shared/${token}`, {
         skipAuth: true,
       }),
-    updateShared: (token: string, input: { title?: string; content?: string; fontFamily?: string }) =>
-      apiFetch<{ note: PublicNote }>(`/notes/shared/${token}`, { method: "PATCH", body: input, skipAuth: true }),
+    /** Authenticated: resolves a public share token to the real note (real
+     * _id, full editor access if the link allows it) — editing a shared
+     * note always requires being signed in, never anonymous. */
+    openShared: (token: string) => apiFetch<{ note: Note; canEdit: boolean }>(`/notes/shared/${token}/open`),
   },
 
   noteImages: {

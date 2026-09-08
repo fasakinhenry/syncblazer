@@ -19,6 +19,13 @@ export interface CollabPresence {
   color: string;
 }
 
+export interface NoteWatcher {
+  userId: string;
+  name: string;
+  avatarUrl?: string;
+  canEdit: boolean;
+}
+
 export interface NoteCollabHandle {
   doc: Y.Doc;
   awareness: Awareness;
@@ -26,9 +33,17 @@ export interface NoteCollabHandle {
    * (including seeding a legacy note from its markdown, if it needed it).
    * The real-time editor should stay in plain-content mode until this
    * flips — switching to Yjs before we know what the server has risks
-   * seeding on top of content that was about to arrive. */
+   * seeding on top of content that was about to arrive. Only ever true for
+   * someone with write access — a read-only watcher never gets the Yjs doc. */
   ready: boolean;
+  /** Live cursors — only populated for other people who can also edit,
+   * since read-only watchers never join the Yjs layer at all. */
   presence: CollabPresence[];
+  /** Everyone currently watching this note, readers and editors alike —
+   * capped server-side to the first 25; `totalWatchers` is the real count
+   * for a "+N" overflow indicator when it's more than the UI shows. */
+  watchers: NoteWatcher[];
+  totalWatchers: number;
   /** The caret extension needs the local user's own name/color up front —
    * computed the same way the awareness state below is, so there's one
    * source of truth instead of the caller re-deriving it separately. */
@@ -48,6 +63,8 @@ export function useNoteCollab(noteId: string | null, initialMarkdown: string): N
   const { user } = useAuth();
   const [ready, setReady] = useState(false);
   const [presence, setPresence] = useState<CollabPresence[]>([]);
+  const [watchers, setWatchers] = useState<NoteWatcher[]>([]);
+  const [totalWatchers, setTotalWatchers] = useState(0);
   const seededRef = useRef(false);
   const initialMarkdownRef = useRef(initialMarkdown);
   initialMarkdownRef.current = initialMarkdown;
@@ -62,6 +79,8 @@ export function useNoteCollab(noteId: string | null, initialMarkdown: string): N
   useEffect(() => {
     setReady(false);
     setPresence([]);
+    setWatchers([]);
+    setTotalWatchers(0);
     seededRef.current = false;
   }, [noteId]);
 
@@ -93,9 +112,16 @@ export function useNoteCollab(noteId: string | null, initialMarkdown: string): N
       applyAwarenessUpdate(awareness, bytes, "remote");
     };
 
+    const onWatchers = (payload: { noteId: string; watchers: NoteWatcher[]; total: number }) => {
+      if (payload.noteId !== noteId || cancelled) return;
+      setWatchers(payload.watchers);
+      setTotalWatchers(payload.total);
+    };
+
     socket.on("note:collab:state", onState);
     socket.on("note:collab:update", onUpdate);
     socket.on("note:collab:awareness", onAwareness);
+    socket.on("note:watchers", onWatchers);
     socket.emit("note:collab:join", { noteId });
 
     const onDocUpdate = (update: Uint8Array, origin: unknown) => {
@@ -130,6 +156,7 @@ export function useNoteCollab(noteId: string | null, initialMarkdown: string): N
       socket.off("note:collab:state", onState);
       socket.off("note:collab:update", onUpdate);
       socket.off("note:collab:awareness", onAwareness);
+      socket.off("note:watchers", onWatchers);
       doc.off("update", onDocUpdate);
       awareness.off("update", onAwarenessChange);
       awareness.off("change", onAwarenessStates);
@@ -146,5 +173,5 @@ export function useNoteCollab(noteId: string | null, initialMarkdown: string): N
   }, [doc, awareness]);
 
   if (!noteId) return null;
-  return { doc, awareness, ready, presence, localUser };
+  return { doc, awareness, ready, presence, watchers, totalWatchers, localUser };
 }

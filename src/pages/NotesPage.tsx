@@ -37,6 +37,7 @@ import {
 import { DEFAULT_NOTE_FONT } from "@/lib/noteFonts.ts";
 import { downloadTextFile, markdownToPlainText, sanitizeFilename } from "@/lib/markdownToPlainText.ts";
 import { NoteEditor } from "@/components/notes/NoteEditor.tsx";
+import { NoteWatchersRow } from "@/components/notes/NoteWatchersRow.tsx";
 import { ShareNoteModal } from "@/components/notes/ShareNoteModal.tsx";
 import { NoteActivityPanel } from "@/components/notes/NoteActivityPanel.tsx";
 import { LinkPreviewCards } from "@/components/notes/LinkPreviewCards.tsx";
@@ -339,6 +340,7 @@ export function NotesPage() {
         content: "",
         fontFamily: DEFAULT_NOTE_FONT,
         visibility: "private",
+        roomAccess: "edit",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
@@ -677,26 +679,6 @@ export function NotesPage() {
               </button>
             </div>
 
-            {collab && collab.presence.length > 0 && (
-              <div className="flex items-center gap-1.5">
-                <div className="flex -space-x-2">
-                  {collab.presence.map((p) => (
-                    <span
-                      key={p.clientId}
-                      title={p.name}
-                      style={{ backgroundColor: p.color }}
-                      className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-background text-[10px] font-semibold uppercase text-white"
-                    >
-                      {p.name.slice(0, 1)}
-                    </span>
-                  ))}
-                </div>
-                <span className="text-xs text-text-secondary">
-                  {collab.presence.length === 1 ? `${collab.presence[0].name} is here too` : `${collab.presence.length} others here`}
-                </span>
-              </div>
-            )}
-
             <NoteEditor
               key={`${selected._id}:${remountKey}`}
               noteId={selected._id}
@@ -707,6 +689,8 @@ export function NotesPage() {
               onFontChange={onChangeFont}
               collab={collab}
             />
+
+            {collab && <NoteWatchersRow watchers={collab.watchers} total={collab.totalWatchers} />}
 
             <LinkPreviewCards markdown={draftContent} />
             {selectedRoom && <NoteActivityPanel noteId={selected._id} roomId={selected.roomId} />}

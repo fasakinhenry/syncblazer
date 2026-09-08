@@ -13,13 +13,13 @@ import type { AnyExtension } from "@tiptap/core";
  * there would corrupt formatting the moment collaboration seeds a note
  * that existed before live co-editing shipped.
  *
- * `history: false` when collaboration is active — Yjs's Collaboration
+ * `undoRedo: false` when collaboration is active — Yjs's Collaboration
  * extension brings its own undo/redo (Y.UndoManager); leaving StarterKit's
- * plain history on too would fight it with a second, unsynced undo stack. */
+ * plain undo/redo on too would fight it with a second, unsynced undo stack. */
 export function createBaseNoteExtensions(opts: { history: boolean } = { history: true }): AnyExtension[] {
   return [
     StarterKit.configure({
-      history: opts.history,
+      undoRedo: opts.history ? {} : false,
       link: { openOnClick: false, autolink: true, HTMLAttributes: { class: "text-brand underline" } },
     }),
     Image.configure({ HTMLAttributes: { class: "rounded-lg max-w-full" } }),
