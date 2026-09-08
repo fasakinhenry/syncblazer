@@ -716,7 +716,7 @@ export function NotesPage() {
                 open={shareOpen}
                 onClose={() => setShareOpen(false)}
                 note={selected}
-                roomName={selectedRoom?.name ?? "this room"}
+                rooms={rooms}
                 onUpdated={(note) => {
                   void cacheNote(note);
                   setNotes((prev) => prev?.map((n) => (n._id === note._id ? note : n)) ?? null);

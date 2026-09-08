@@ -7,6 +7,7 @@ import type {
   Device,
   MyStats,
   Note,
+  NoteAccessLevel,
   NoteVisibility,
   PublicNote,
   Room,
@@ -200,15 +201,24 @@ export const api = {
     }) => apiFetch<{ note: Note }>("/notes", { method: "POST", body: input }),
     update: (
       noteId: string,
-      input: { title?: string; content?: string; visibility?: NoteVisibility; fontFamily?: string }
+      input: {
+        title?: string;
+        content?: string;
+        visibility?: NoteVisibility;
+        roomAccess?: NoteAccessLevel;
+        fontFamily?: string;
+        roomId?: string;
+      }
     ) => apiFetch<{ note: Note }>(`/notes/${noteId}`, { method: "PATCH", body: input }),
     remove: (noteId: string) => apiFetch<{ noteId: string }>(`/notes/${noteId}`, { method: "DELETE" }),
-    share: (noteId: string, enabled: boolean) =>
-      apiFetch<{ note: Note }>(`/notes/${noteId}/share`, { method: "POST", body: { enabled } }),
+    share: (noteId: string, enabled: boolean, access?: NoteAccessLevel) =>
+      apiFetch<{ note: Note }>(`/notes/${noteId}/share`, { method: "POST", body: { enabled, access } }),
     getShared: (token: string) =>
       apiFetch<{ note: PublicNote; owner: { name: string; avatarUrl?: string } | null }>(`/notes/shared/${token}`, {
         skipAuth: true,
       }),
+    updateShared: (token: string, input: { title?: string; content?: string; fontFamily?: string }) =>
+      apiFetch<{ note: PublicNote }>(`/notes/shared/${token}`, { method: "PATCH", body: input, skipAuth: true }),
   },
 
   noteImages: {

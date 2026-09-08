@@ -41,6 +41,7 @@ export interface RoomMember {
 }
 
 export type NoteVisibility = "private" | "room";
+export type NoteAccessLevel = "view" | "edit";
 
 export interface Note {
   _id: string;
@@ -51,7 +52,9 @@ export interface Note {
   content: string;
   fontFamily: string;
   visibility: NoteVisibility;
-  publicShare?: { enabled: boolean; token?: string; viewCount?: number; lastViewedAt?: string };
+  /** What visibility: "room" actually grants room members. Ignored when private. */
+  roomAccess: NoteAccessLevel;
+  publicShare?: { enabled: boolean; access: NoteAccessLevel; token?: string; viewCount?: number; lastViewedAt?: string };
   createdAt: string;
   updatedAt: string;
 }
@@ -61,6 +64,8 @@ export interface PublicNote {
   content: string;
   fontFamily: string;
   updatedAt: string;
+  /** "edit" means this public page is a real, anonymous, no-login editor. */
+  access: NoteAccessLevel;
 }
 
 export type TransferType = "file" | "image" | "text" | "link";
