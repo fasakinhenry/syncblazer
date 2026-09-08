@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
-import { ArrowLeft, Check, CloudArrowUp, Copy, Fire, Trash, UploadSimple, WifiHigh } from "@phosphor-icons/react";
-import { api } from "@/lib/api.ts";
+import { ArrowLeft, Check, CloudArrowUp, Copy, Fire, PaperPlaneTilt, Trash, UploadSimple, WifiHigh, X } from "@phosphor-icons/react";
+import { api, ApiClientError } from "@/lib/api.ts";
 import type { Activity, Device, Room, RoomMember } from "@/lib/types.ts";
 import { useAuth } from "@/context/AuthContext.tsx";
 import { useSocket } from "@/context/SocketContext.tsx";
@@ -14,6 +14,7 @@ import { DEVICE_TYPE_ICON } from "@/components/devices/deviceIcons.tsx";
 import { Avatar } from "@/components/Avatar.tsx";
 import { Card } from "@/components/ui/Card.tsx";
 import { Button } from "@/components/ui/Button.tsx";
+import { Input } from "@/components/ui/Input.tsx";
 import { PageSpinner } from "@/components/ui/Spinner.tsx";
 import { EmptyState } from "@/components/ui/EmptyState.tsx";
 import { ConfettiBurst } from "@/components/ConfettiBurst.tsx";
@@ -31,6 +32,10 @@ export function RoomDetailPage() {
   const [activity, setActivity] = useState<Activity[]>([]);
   const [copied, setCopied] = useState(false);
   const [celebrate, setCelebrate] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviting, setInviting] = useState(false);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [removingId, setRemovingId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const targetRef = useRef<{ id: string; name: string } | null>(null);
   const currentDeviceId = getCurrentDevice()?._id;
@@ -72,6 +77,13 @@ export function RoomDetailPage() {
     };
     const onActivity = (item: Activity) => setActivity((prev) => [item, ...prev].slice(0, 20));
     const onMemberJoined = () => load();
+    const onMemberRemoved = () => load();
+    const onRemovedFrom = (payload: { roomId: string }) => {
+      if (payload.roomId === roomId) {
+        toast("You were removed from this room", "info");
+        navigate("/room");
+      }
+    };
     // device:presence above only updates a device already in the list — it
     // can't add one. A brand-new device (just paired, or just logged in on
     // another of your devices) needs a real refetch to show up without a
@@ -81,11 +93,15 @@ export function RoomDetailPage() {
     socket.on("device:presence", onPresence);
     socket.on("activity:new", onActivity);
     socket.on("room:member-joined", onMemberJoined);
+    socket.on("room:member-removed", onMemberRemoved);
+    socket.on("room:removed-from", onRemovedFrom);
     socket.on("network:changed", onNetworkChanged);
     return () => {
       socket.off("device:presence", onPresence);
       socket.off("activity:new", onActivity);
       socket.off("room:member-joined", onMemberJoined);
+      socket.off("room:member-removed", onMemberRemoved);
+      socket.off("room:removed-from", onRemovedFrom);
       socket.off("network:changed", onNetworkChanged);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -116,6 +132,37 @@ export function RoomDetailPage() {
     await api.rooms.remove(room._id);
     toast("Room deleted", "info");
     navigate("/room");
+  };
+
+  const onInvite = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!roomId || !inviteEmail.trim()) return;
+    setInviteError(null);
+    setInviting(true);
+    try {
+      const { status } = await api.rooms.invite(roomId, inviteEmail.trim());
+      toast(status === "added" ? "Added to the room" : "Invite sent", "success");
+      setInviteEmail("");
+      load();
+    } catch (err) {
+      setInviteError(err instanceof ApiClientError ? err.message : "Couldn't send that invite. Try again.");
+    } finally {
+      setInviting(false);
+    }
+  };
+
+  const onRemoveMember = async (memberId: string) => {
+    if (!roomId || !window.confirm("Remove this person from the room?")) return;
+    setRemovingId(memberId);
+    try {
+      await api.rooms.removeMember(roomId, memberId);
+      setMembers((prev) => prev.filter((m) => m._id !== memberId));
+      toast("Removed from room", "info");
+    } catch (err) {
+      toast(err instanceof ApiClientError ? err.message : "Couldn't remove that person.", "error");
+    } finally {
+      setRemovingId(null);
+    }
   };
 
   if (!room) return <PageSpinner />;
@@ -243,19 +290,53 @@ export function RoomDetailPage() {
         )}
       </section>
 
-      {members.length > 0 && (
-        <section>
-          <h2 className="mb-3 text-sm font-semibold text-text-secondary">People</h2>
+      <section>
+        <h2 className="mb-3 text-sm font-semibold text-text-secondary">People</h2>
+
+        {room.ownerId === user?.id && (
+          <form onSubmit={onInvite} className="mb-4 flex items-start gap-2">
+            <div className="flex-1">
+              <Input
+                type="email"
+                placeholder="Invite by email"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                required
+              />
+              {inviteError ? <p className="mt-1 text-xs text-danger">{inviteError}</p> : null}
+            </div>
+            <Button type="submit" variant="secondary" size="md" loading={inviting} className="shrink-0 gap-1.5">
+              <PaperPlaneTilt className="h-3.5 w-3.5" />
+              Invite
+            </Button>
+          </form>
+        )}
+
+        {members.length > 0 && (
           <div className="flex flex-wrap gap-3">
-            {members.map((member) => (
-              <div key={member._id} className="flex items-center gap-2 rounded-full border border-border py-1 pl-1 pr-3">
-                <Avatar name={member.name} src={member.avatarUrl} className="h-6 w-6 text-xs" />
-                <span className="text-sm text-text-primary">{member._id === user?.id ? "You" : member.name}</span>
-              </div>
-            ))}
+            {members.map((member) => {
+              const isSelf = member._id === user?.id;
+              const canRemove = room.ownerId === user?.id && !isSelf;
+              return (
+                <div key={member._id} className="flex items-center gap-2 rounded-full border border-border py-1 pl-1 pr-3">
+                  <Avatar name={member.name} src={member.avatarUrl} className="h-6 w-6 text-xs" />
+                  <span className="text-sm text-text-primary">{isSelf ? "You" : member.name}</span>
+                  {canRemove && (
+                    <button
+                      onClick={() => onRemoveMember(member._id)}
+                      disabled={removingId === member._id}
+                      className="ml-1 rounded-full p-0.5 text-text-secondary hover:bg-danger/10 hover:text-danger disabled:opacity-50"
+                      aria-label={`Remove ${member.name}`}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
           </div>
-        </section>
-      )}
+        )}
+      </section>
     </div>
   );
 }

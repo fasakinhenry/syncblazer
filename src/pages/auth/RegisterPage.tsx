@@ -1,5 +1,5 @@
 import { useCallback, useState, type FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { AuthLayout } from "@/pages/auth/AuthLayout.tsx";
 import { Input } from "@/components/ui/Input.tsx";
 import { Button } from "@/components/ui/Button.tsx";
@@ -13,6 +13,11 @@ import { ApiClientError } from "@/lib/api.ts";
 export function RegisterPage() {
   const { register } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  // From a room-invite email's signup link — only the email/password path
+  // below actually joins the room on registration (see AuthContext.tsx);
+  // Google/guest signup here isn't guaranteed to use the invited email.
+  const inviteToken = searchParams.get("invite") ?? undefined;
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -28,7 +33,7 @@ export function RegisterPage() {
     setError(null);
     setLoading(true);
     try {
-      await register(name, email, password);
+      await register(name, email, password, inviteToken);
       celebrateThenGo();
     } catch (err) {
       setError(err instanceof ApiClientError ? err.message : "Something went wrong. Please try again.");
@@ -40,6 +45,12 @@ export function RegisterPage() {
   return (
     <AuthLayout title="Create your workspace" subtitle="Move anything between your devices, instantly.">
       <ConfettiBurst active={celebrate} onComplete={goToRoom} />
+
+      {inviteToken && (
+        <p className="mb-4 rounded-lg bg-brand-soft px-3 py-2 text-center text-xs text-brand">
+          You've been invited to a room — sign up with email below to join it automatically.
+        </p>
+      )}
 
       <div className="flex flex-col gap-3">
         <GoogleSignInButton onSuccess={celebrateThenGo} onError={setError} />

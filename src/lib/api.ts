@@ -127,7 +127,7 @@ interface DeviceInfo {
 
 export const api = {
   auth: {
-    register: (input: { name: string; email: string; password: string; device?: DeviceInfo }) =>
+    register: (input: { name: string; email: string; password: string; device?: DeviceInfo; inviteToken?: string }) =>
       apiFetch<{ user: User; room: Room; device?: Device; accessToken: string; refreshToken: string }>(
         "/auth/register",
         { method: "POST", body: input, skipAuth: true }
@@ -180,6 +180,12 @@ export const api = {
     update: (roomId: string, input: { name: string }) =>
       apiFetch<{ room: Room }>(`/rooms/${roomId}`, { method: "PATCH", body: input }),
     remove: (roomId: string) => apiFetch<{ roomId: string }>(`/rooms/${roomId}`, { method: "DELETE" }),
+    /** "added" if the email already had an account (they're in the room
+     * now), "invited" if they'll join automatically once they register. */
+    invite: (roomId: string, email: string) =>
+      apiFetch<{ status: "added" | "invited" }>(`/rooms/${roomId}/invite`, { method: "POST", body: { email } }),
+    removeMember: (roomId: string, userId: string) =>
+      apiFetch<{ roomId: string; userId: string }>(`/rooms/${roomId}/members/${userId}`, { method: "DELETE" }),
   },
 
   devices: {

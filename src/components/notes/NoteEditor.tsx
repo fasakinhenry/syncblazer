@@ -164,7 +164,7 @@ export function NoteEditor({
     const dom = editor.view.dom;
     let hideTimer: ReturnType<typeof setTimeout> | null = null;
 
-    const onMouseOver = (e: MouseEvent) => {
+    const onMouseOver = (e: globalThis.MouseEvent) => {
       const link = (e.target as HTMLElement).closest("a");
       if (!link) return;
       if (hideTimer) {
@@ -174,17 +174,17 @@ export function NoteEditor({
       const rect = link.getBoundingClientRect();
       setLinkPreview({ url: link.href, x: rect.left, y: rect.bottom + 6 });
     };
-    const onMouseOut = (e: MouseEvent) => {
-      const related = (e as unknown as { relatedTarget: HTMLElement | null }).relatedTarget;
+    const onMouseOut = (e: globalThis.MouseEvent) => {
+      const related = e.relatedTarget as HTMLElement | null;
       if (related?.closest?.(".note-link-preview-popover")) return;
       hideTimer = setTimeout(() => setLinkPreview(null), 150);
     };
 
-    dom.addEventListener("mouseover", onMouseOver as EventListener);
-    dom.addEventListener("mouseout", onMouseOut as EventListener);
+    dom.addEventListener("mouseover", onMouseOver);
+    dom.addEventListener("mouseout", onMouseOut);
     return () => {
-      dom.removeEventListener("mouseover", onMouseOver as EventListener);
-      dom.removeEventListener("mouseout", onMouseOut as EventListener);
+      dom.removeEventListener("mouseover", onMouseOver);
+      dom.removeEventListener("mouseout", onMouseOut);
       if (hideTimer) clearTimeout(hideTimer);
     };
   }, [editor]);

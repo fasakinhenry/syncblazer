@@ -17,7 +17,7 @@ interface AuthContextValue {
   user: User | null;
   currentDevice: Device | null;
   login: (email: string, password: string) => Promise<void>;
-  register: (name: string, email: string, password: string) => Promise<void>;
+  register: (name: string, email: string, password: string, inviteToken?: string) => Promise<void>;
   continueAsGuest: () => Promise<void>;
   loginWithGoogle: (idToken: string) => Promise<void>;
   /** Converts the current guest account into a real one, keeping every
@@ -88,9 +88,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const register = useCallback(
-    async (name: string, email: string, password: string) => {
+    async (name: string, email: string, password: string, inviteToken?: string) => {
       const device = detectDeviceInfo();
-      applySession(await api.auth.register({ name, email, password, device }));
+      applySession(await api.auth.register({ name, email, password, device, inviteToken }));
     },
     [applySession]
   );
