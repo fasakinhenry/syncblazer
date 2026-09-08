@@ -169,6 +169,42 @@ body {
 .note-prose a {
   color: var(--color-brand);
   text-decoration: underline;
+  cursor: pointer;
+}
+
+/* Note images (see noteEditorExtensions.ts's createNoteImageNodeView) — a
+ * hover-reveal delete button in the corner, since selecting the image node
+ * and pressing Backspace was the only way to remove one before and nothing
+ * in the UI hinted at it. */
+.note-image-wrapper {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+}
+.note-image-delete {
+  position: absolute;
+  top: 0.5em;
+  right: 0.5em;
+  display: flex;
+  height: 1.75em;
+  width: 1.75em;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  border: none;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
+}
+.note-image-wrapper:hover .note-image-delete {
+  opacity: 1;
+}
+.note-image-delete:hover {
+  background: rgba(0, 0, 0, 0.8);
 }
 
 /* Live collaborative cursors (see NoteEditor.tsx's createCaretRenderer) — a

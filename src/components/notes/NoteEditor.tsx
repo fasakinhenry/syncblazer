@@ -11,6 +11,7 @@ import type { NoteCollabHandle } from "@/hooks/useNoteCollab.ts";
 import { NoteEditorToolbar } from "@/components/notes/NoteEditorToolbar.tsx";
 import { NoteContextMenu, type ContextMenuItem } from "@/components/notes/NoteContextMenu.tsx";
 import type { SelectedCollaborator } from "@/components/notes/UserDetailsModal.tsx";
+import { NoteLinkHoverPreview } from "@/components/notes/NoteLinkHoverPreview.tsx";
 
 function getMarkdown(editor: Editor): string {
   return (editor.storage as unknown as { markdown: { getMarkdown: () => string } }).markdown.getMarkdown();
@@ -94,6 +95,7 @@ export function NoteEditor({
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const [linkPreview, setLinkPreview] = useState<{ url: string; x: number; y: number } | null>(null);
   const activeCollab = collab?.ready ? collab : null;
 
   const onSelectCollaboratorRef = useRef(onSelectCollaborator);
@@ -102,6 +104,13 @@ export function NoteEditor({
     onSelectCollaboratorRef.current?.({ name: user.name || "Someone", email: user.email, avatarUrl: user.avatarUrl });
   });
   const caretRenderer = useRef(createCaretRenderer(caretClickRef)).current;
+
+  // `handleClick` is only ever wired once (editorProps is fixed at
+  // construction, same as the extensions list) but should always see the
+  // current `editable` — a ref sidesteps needing to rebuild the editor
+  // (deps below) just because editable flipped.
+  const editableRef = useRef(editable);
+  editableRef.current = editable;
 
   const editor = useEditor(
     {
@@ -125,6 +134,19 @@ export function NoteEditor({
       },
       editorProps: {
         attributes: { class: "note-prose focus:outline-none" },
+        // Links stay visually styled but inert while actively typing
+        // (openOnClick: false, below) so a stray click doesn't yank focus
+        // away mid-edit — but a modifier-click always works, and a
+        // read-only viewer (nothing to accidentally disrupt) can click
+        // straight through.
+        handleClick: (_view, _pos, event) => {
+          const link = (event.target as HTMLElement).closest("a");
+          if (!link) return false;
+          if (editableRef.current && !(event.metaKey || event.ctrlKey)) return false;
+          event.preventDefault();
+          window.open(link.href, "_blank", "noopener,noreferrer");
+          return true;
+        },
       },
     },
     [noteId, !!activeCollab]
@@ -133,6 +155,39 @@ export function NoteEditor({
   useEffect(() => {
     editor?.setEditable(editable);
   }, [editor, editable]);
+
+  // Hover preview for a link inside the note body — event delegation on the
+  // editor's own DOM root rather than per-link React handlers, since links
+  // are rendered by ProseMirror, not React.
+  useEffect(() => {
+    if (!editor) return;
+    const dom = editor.view.dom;
+    let hideTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const onMouseOver = (e: MouseEvent) => {
+      const link = (e.target as HTMLElement).closest("a");
+      if (!link) return;
+      if (hideTimer) {
+        clearTimeout(hideTimer);
+        hideTimer = null;
+      }
+      const rect = link.getBoundingClientRect();
+      setLinkPreview({ url: link.href, x: rect.left, y: rect.bottom + 6 });
+    };
+    const onMouseOut = (e: MouseEvent) => {
+      const related = (e as unknown as { relatedTarget: HTMLElement | null }).relatedTarget;
+      if (related?.closest?.(".note-link-preview-popover")) return;
+      hideTimer = setTimeout(() => setLinkPreview(null), 150);
+    };
+
+    dom.addEventListener("mouseover", onMouseOver as EventListener);
+    dom.addEventListener("mouseout", onMouseOut as EventListener);
+    return () => {
+      dom.removeEventListener("mouseover", onMouseOver as EventListener);
+      dom.removeEventListener("mouseout", onMouseOut as EventListener);
+      if (hideTimer) clearTimeout(hideTimer);
+    };
+  }, [editor]);
 
   if (!editor) return null;
 
@@ -214,6 +269,7 @@ export function NoteEditor({
       </p>
 
       {menu && <NoteContextMenu x={menu.x} y={menu.y} items={contextItems} onClose={() => setMenu(null)} />}
+      {linkPreview && <NoteLinkHoverPreview url={linkPreview.url} x={linkPreview.x} y={linkPreview.y} />}
     </div>
   );
 }
