@@ -15,6 +15,7 @@ import { Avatar } from "@/components/Avatar.tsx";
 import { Card } from "@/components/ui/Card.tsx";
 import { Button } from "@/components/ui/Button.tsx";
 import { Input } from "@/components/ui/Input.tsx";
+import { ShareTargets } from "@/components/ShareTargets.tsx";
 import { PageSpinner } from "@/components/ui/Spinner.tsx";
 import { EmptyState } from "@/components/ui/EmptyState.tsx";
 import { ConfettiBurst } from "@/components/ConfettiBurst.tsx";
@@ -209,14 +210,20 @@ export function RoomDetailPage() {
               Anyone with this code can join and send files here.
             </p>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="rounded-lg border border-border bg-white p-2">
-              <QRCodeSVG value={`${window.location.origin}/room?joinRoom=${room.code}`} size={72} />
+          <div className="flex flex-col items-center gap-3 sm:items-end">
+            <div className="flex items-center gap-3">
+              <div className="rounded-lg border border-border bg-white p-2">
+                <QRCodeSVG value={`${window.location.origin}/room?joinRoom=${room.code}`} size={72} />
+              </div>
+              <Button variant="secondary" size="sm" onClick={copyCode} className="gap-1.5">
+                {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                {copied ? "Copied" : "Copy"}
+              </Button>
             </div>
-            <Button variant="secondary" size="sm" onClick={copyCode} className="gap-1.5">
-              {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-              {copied ? "Copied" : "Copy"}
-            </Button>
+            <ShareTargets
+              url={`${window.location.origin}/room?joinRoom=${room.code}`}
+              title={`Join "${room.name}" on SyncBlaze`}
+            />
           </div>
         </Card>
       )}

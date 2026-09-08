@@ -3,6 +3,7 @@ import { Check, Copy, Globe, Lock, PencilSimple, UsersThree, Warning } from "@ph
 import { Modal } from "@/components/ui/Modal.tsx";
 import { Button } from "@/components/ui/Button.tsx";
 import { Toggle } from "@/components/ui/Toggle.tsx";
+import { ShareTargets } from "@/components/ShareTargets.tsx";
 import { useToast } from "@/context/ToastContext.tsx";
 import { api, ApiClientError } from "@/lib/api.ts";
 import { formatRelativeTime } from "@/lib/format.ts";
@@ -237,6 +238,8 @@ export function ShareNoteModal({ open, onClose, note, rooms, onUpdated }: ShareN
                   </Button>
                 </div>
               )}
+
+              {shareUrl && <ShareTargets url={shareUrl} title={`${note.title || "A note"} — SyncBlaze`} />}
 
               <p className="text-xs text-text-secondary">
                 {note.publicShare.viewCount ?? 0} view{note.publicShare.viewCount === 1 ? "" : "s"}
