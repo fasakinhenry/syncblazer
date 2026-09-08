@@ -15,6 +15,39 @@ function getMarkdown(editor: Editor): string {
   return (editor.storage as unknown as { markdown: { getMarkdown: () => string } }).markdown.getMarkdown();
 }
 
+interface CaretUser {
+  name?: string;
+  color?: string;
+  avatarUrl?: string;
+}
+
+/** Custom cursor for another live collaborator: a small avatar bubble
+ * floating above the caret line instead of TipTap's default text-label
+ * pill — hovering it (native title attribute) shows the person's name. */
+function renderCollaborationCaret(user: CaretUser): HTMLElement {
+  const color = typeof user.color === "string" && /^#[0-9a-fA-F]{6}$/.test(user.color) ? user.color : "#94a3b8";
+  const name = user.name || "Someone";
+
+  const caret = document.createElement("span");
+  caret.classList.add("collaboration-carets__caret");
+  caret.style.borderColor = color;
+
+  const avatar = document.createElement(user.avatarUrl ? "img" : "span");
+  avatar.classList.add("collaboration-carets__avatar");
+  avatar.style.borderColor = color;
+  avatar.title = name;
+  if (user.avatarUrl) {
+    (avatar as HTMLImageElement).src = user.avatarUrl;
+    (avatar as HTMLImageElement).alt = name;
+  } else {
+    avatar.textContent = name.charAt(0).toUpperCase();
+    avatar.style.backgroundColor = color;
+  }
+  caret.appendChild(avatar);
+
+  return caret;
+}
+
 interface NoteEditorProps {
   /** Remount key for the parent — switching notes (or applying a remote
    * update while not focused) should reinitialize the editor from fresh
@@ -48,6 +81,7 @@ export function NoteEditor({ noteId, initialContent, fontFamily, editable, onUpd
               CollaborationCaret.configure({
                 provider: { awareness: activeCollab.awareness },
                 user: activeCollab.localUser,
+                render: renderCollaborationCaret,
               }),
             ]
           : []),

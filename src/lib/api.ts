@@ -154,6 +154,13 @@ export const api = {
     updateMe: (input: { name?: string; avatarUrl?: string }) =>
       apiFetch<{ user: User }>("/auth/me", { method: "PATCH", body: input }),
     deleteAccount: () => apiFetch<{ deleted: boolean }>("/auth/me", { method: "DELETE" }),
+    /** Converts the current guest account into a real one, in place — same
+     * user id, so every room/note/device already attached stays attached. */
+    upgrade: (input: { name?: string; email: string; password: string }) =>
+      apiFetch<{ user: User; accessToken: string; refreshToken: string }>("/auth/upgrade", {
+        method: "POST",
+        body: input,
+      }),
   },
 
   rooms: {
@@ -219,8 +226,11 @@ export const api = {
       }),
     /** Authenticated: resolves a public share token to the real note (real
      * _id, full editor access if the link allows it) — editing a shared
-     * note always requires being signed in, never anonymous. */
-    openShared: (token: string) => apiFetch<{ note: Note; canEdit: boolean }>(`/notes/shared/${token}/open`),
+     * note always requires being signed in, never anonymous. `blockedByGuest`
+     * is true when the link allows editing but this account is a guest —
+     * distinct from a link that's genuinely view-only. */
+    openShared: (token: string) =>
+      apiFetch<{ note: Note; canEdit: boolean; blockedByGuest: boolean }>(`/notes/shared/${token}/open`),
   },
 
   noteImages: {

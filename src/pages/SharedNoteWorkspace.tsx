@@ -7,6 +7,7 @@ import { DEFAULT_NOTE_FONT } from "@/lib/noteFonts.ts";
 import { useNoteCollab } from "@/hooks/useNoteCollab.ts";
 import { NoteEditor } from "@/components/notes/NoteEditor.tsx";
 import { NoteWatchersRow } from "@/components/notes/NoteWatchersRow.tsx";
+import { GuestEditBlockedBanner } from "@/components/notes/GuestEditBlockedBanner.tsx";
 import { EmptyState } from "@/components/ui/EmptyState.tsx";
 import { PageSpinner } from "@/components/ui/Spinner.tsx";
 
@@ -21,6 +22,7 @@ import { PageSpinner } from "@/components/ui/Spinner.tsx";
 export function SharedNoteWorkspace({ token }: { token: string }) {
   const [note, setNote] = useState<Note | null>(null);
   const [canEdit, setCanEdit] = useState(false);
+  const [blockedByGuest, setBlockedByGuest] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [draftTitle, setDraftTitle] = useState("");
   const [draftContent, setDraftContent] = useState("");
@@ -35,9 +37,10 @@ export function SharedNoteWorkspace({ token }: { token: string }) {
   useEffect(() => {
     api.notes
       .openShared(token)
-      .then(({ note, canEdit }) => {
+      .then(({ note, canEdit, blockedByGuest }) => {
         setNote(note);
         setCanEdit(canEdit);
+        setBlockedByGuest(blockedByGuest);
         setDraftTitle(note.title);
         setDraftContent(note.content);
         setDraftFont(note.fontFamily);
@@ -141,6 +144,8 @@ export function SharedNoteWorkspace({ token }: { token: string }) {
                 </p>
               )}
             </div>
+
+            {blockedByGuest && <GuestEditBlockedBanner />}
 
             <NoteEditor
               noteId={note._id}

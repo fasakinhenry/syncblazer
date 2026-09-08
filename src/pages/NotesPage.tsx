@@ -18,6 +18,7 @@ import {
 } from "@phosphor-icons/react";
 import { api } from "@/lib/api.ts";
 import type { Note } from "@/lib/types.ts";
+import { useAuth } from "@/context/AuthContext.tsx";
 import { useRooms } from "@/context/RoomContext.tsx";
 import { useSocket } from "@/context/SocketContext.tsx";
 import { useToast } from "@/context/ToastContext.tsx";
@@ -38,6 +39,7 @@ import { DEFAULT_NOTE_FONT } from "@/lib/noteFonts.ts";
 import { downloadTextFile, markdownToPlainText, sanitizeFilename } from "@/lib/markdownToPlainText.ts";
 import { NoteEditor } from "@/components/notes/NoteEditor.tsx";
 import { NoteWatchersRow } from "@/components/notes/NoteWatchersRow.tsx";
+import { GuestEditBlockedBanner } from "@/components/notes/GuestEditBlockedBanner.tsx";
 import { ShareNoteModal } from "@/components/notes/ShareNoteModal.tsx";
 import { NoteActivityPanel } from "@/components/notes/NoteActivityPanel.tsx";
 import { LinkPreviewCards } from "@/components/notes/LinkPreviewCards.tsx";
@@ -50,6 +52,7 @@ import { Badge } from "@/components/ui/Badge.tsx";
 const REMOTE_APPLY_QUIET_MS = 3000; // only let a live remote update overwrite the editor after this long without local typing
 
 export function NotesPage() {
+  const { user } = useAuth();
   const { defaultRoom, rooms } = useRooms();
   const { socket } = useSocket();
   const { toast } = useToast();
@@ -102,6 +105,19 @@ export function NotesPage() {
   const collab = useNoteCollab(selectedId, draftContent);
   const collabRef = useRef(collab);
   collabRef.current = collab;
+
+  // Mirrors the backend's noteWriteFilter (note.controller.ts /
+  // noteAccess.service.ts): owner always edits; room/public edit access
+  // otherwise applies, except for a guest account, which only ever edits
+  // its own notes — collaborating on someone else's is what nudges a guest
+  // toward creating a real account (see GuestEditBlockedBanner).
+  const isOwner = !!selected && selected.ownerId === user?.id;
+  const otherwiseEditable =
+    !!selected &&
+    ((selected.visibility === "room" && selected.roomAccess === "edit") ||
+      (!!selected.publicShare?.enabled && selected.publicShare.access === "edit"));
+  const canEditSelected = isOwner || (otherwiseEditable && !user?.isGuest);
+  const guestBlockedFromEditing = !isOwner && otherwiseEditable && !!user?.isGuest;
 
   // Sets selectedId AND the draft fields together, synchronously, in one
   // batch — never rely on a follow-up effect to hydrate the draft from
@@ -679,12 +695,17 @@ export function NotesPage() {
               </button>
             </div>
 
+            {guestBlockedFromEditing && <GuestEditBlockedBanner />}
+            {!isOwner && !canEditSelected && !guestBlockedFromEditing && (
+              <p className="text-xs text-text-secondary">You have view-only access to this note.</p>
+            )}
+
             <NoteEditor
               key={`${selected._id}:${remountKey}`}
               noteId={selected._id}
               initialContent={draftContent}
               fontFamily={draftFont}
-              editable
+              editable={canEditSelected}
               onUpdateMarkdown={onChangeContent}
               onFontChange={onChangeFont}
               collab={collab}

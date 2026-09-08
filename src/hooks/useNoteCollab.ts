@@ -17,6 +17,7 @@ export interface CollabPresence {
   clientId: number;
   name: string;
   color: string;
+  avatarUrl?: string;
 }
 
 export interface NoteWatcher {
@@ -47,7 +48,7 @@ export interface NoteCollabHandle {
   /** The caret extension needs the local user's own name/color up front —
    * computed the same way the awareness state below is, so there's one
    * source of truth instead of the caller re-deriving it separately. */
-  localUser: { name: string; color: string };
+  localUser: { name: string; color: string; avatarUrl?: string };
 }
 
 /** Owns a note's live Yjs document + awareness (cursor/presence) state and
@@ -72,7 +73,7 @@ export function useNoteCollab(noteId: string | null, initialMarkdown: string): N
   const doc = useMemo(() => new Y.Doc(), [noteId]);
   const awareness = useMemo(() => new Awareness(doc), [doc]);
   const localUser = useMemo(
-    () => ({ name: user?.name ?? "Someone", color: colorForUser(user?.id ?? "anon") }),
+    () => ({ name: user?.name ?? "Someone", color: colorForUser(user?.id ?? "anon"), avatarUrl: user?.avatarUrl }),
     [user]
   );
 
@@ -146,6 +147,7 @@ export function useNoteCollab(noteId: string | null, initialMarkdown: string): N
           clientId,
           name: (state.user?.name as string) ?? "Someone",
           color: (state.user?.color as string) ?? "#94a3b8",
+          avatarUrl: state.user?.avatarUrl as string | undefined,
         }));
       setPresence(states);
     };

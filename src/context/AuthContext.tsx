@@ -20,6 +20,9 @@ interface AuthContextValue {
   register: (name: string, email: string, password: string) => Promise<void>;
   continueAsGuest: () => Promise<void>;
   loginWithGoogle: (idToken: string) => Promise<void>;
+  /** Converts the current guest account into a real one, keeping every
+   * room/note/device already attached to it. */
+  upgradeGuest: (input: { name?: string; email: string; password: string }) => Promise<void>;
   updateProfile: (input: { name?: string; avatarUrl?: string }) => Promise<void>;
   deleteAccount: () => Promise<void>;
   logout: () => void;
@@ -103,6 +106,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [applySession]
   );
 
+  const upgradeGuest = useCallback(
+    async (input: { name?: string; email: string; password: string }) => {
+      applySession(await api.auth.upgrade(input));
+    },
+    [applySession]
+  );
+
   const updateProfile = useCallback(async (input: { name?: string; avatarUrl?: string }) => {
     const { user } = await api.auth.updateMe(input);
     setUser(user);
@@ -114,8 +124,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [logout]);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ status, user, currentDevice, login, register, continueAsGuest, loginWithGoogle, updateProfile, deleteAccount, logout }),
-    [status, user, currentDevice, login, register, continueAsGuest, loginWithGoogle, updateProfile, deleteAccount, logout]
+    () => ({
+      status,
+      user,
+      currentDevice,
+      login,
+      register,
+      continueAsGuest,
+      loginWithGoogle,
+      upgradeGuest,
+      updateProfile,
+      deleteAccount,
+      logout,
+    }),
+    [
+      status,
+      user,
+      currentDevice,
+      login,
+      register,
+      continueAsGuest,
+      loginWithGoogle,
+      upgradeGuest,
+      updateProfile,
+      deleteAccount,
+      logout,
+    ]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
