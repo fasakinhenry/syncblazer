@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
-import { ArrowLeft, Check, CloudArrowUp, Copy, Fire, PaperPlaneTilt, Trash, UploadSimple, WifiHigh, X } from "@phosphor-icons/react";
+import { ArrowLeft, ChatCircleDots, Check, CloudArrowUp, Copy, Fire, PaperPlaneTilt, Trash, UploadSimple, WifiHigh, X } from "@phosphor-icons/react";
 import { api, ApiClientError } from "@/lib/api.ts";
 import type { Activity, Device, Room, RoomMember } from "@/lib/types.ts";
 import { useAuth } from "@/context/AuthContext.tsx";
@@ -190,6 +190,12 @@ export function RoomDetailPage() {
             {devices.length === 1 ? "device" : "devices"}
           </p>
         </div>
+        {!room.isDefault && (
+          <Button variant="secondary" size="sm" onClick={() => navigate(`/rooms/${room._id}/chat`)} className="shrink-0 gap-1.5">
+            <ChatCircleDots className="h-3.5 w-3.5" />
+            Chat
+          </Button>
+        )}
         {room.ownerId === user?.id && !room.isDefault && (
           <button
             onClick={deleteRoom}

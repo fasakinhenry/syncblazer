@@ -223,6 +223,24 @@ export interface AdminUserDetail {
   recentActivity: AdminActivityItem[];
 }
 
+export type ChatMessageType = "text" | "image" | "audio";
+
+/** As it comes off the wire — still ciphertext. See roomChatCrypto.ts for
+ * the decrypted shape and RoomChatContext.tsx for where that happens. */
+export interface ChatMessageDto {
+  _id: string;
+  clientMsgId?: string;
+  senderId: string;
+  senderName: string;
+  senderAvatarUrl?: string;
+  senderDeviceId: string;
+  epoch: number;
+  type: ChatMessageType;
+  ciphertext: string;
+  iv: string;
+  createdAt: string;
+}
+
 export interface MyStats {
   counts: {
     notes: number;

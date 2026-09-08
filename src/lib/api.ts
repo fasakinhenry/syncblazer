@@ -4,6 +4,7 @@ import type {
   AdminUser,
   AdminUserDetail,
   AuthProvider,
+  ChatMessageDto,
   Device,
   MyStats,
   Note,
@@ -193,6 +194,8 @@ export const api = {
     rename: (deviceId: string, name: string) =>
       apiFetch<{ device: Device }>(`/devices/${deviceId}`, { method: "PATCH", body: { name } }),
     remove: (deviceId: string) => apiFetch<{ deviceId: string }>(`/devices/${deviceId}`, { method: "DELETE" }),
+    setMyPublicKey: (publicKey: string) =>
+      apiFetch<{ deviceId: string }>("/devices/me/public-key", { method: "PUT", body: { publicKey } }),
     createPairingSession: (roomId: string) =>
       apiFetch<{ token: string; shortCode: string; expiresAt: string }>("/devices/pairing-sessions", {
         method: "POST",
@@ -259,6 +262,38 @@ export const api = {
       apiFetch<{ user: { id: string; name: string; avatarUrl?: string; isGuest: boolean } }>(`/users/${userId}`, {
         skipAuth: true,
       }),
+  },
+
+  chat: {
+    getDevices: (roomId: string) =>
+      apiFetch<{ devices: { deviceId: string; userId: string; name: string; publicKey: string }[] }>(
+        `/chat/${roomId}/devices`
+      ),
+    getEpoch: (roomId: string) => apiFetch<{ epoch: number }>(`/chat/${roomId}/epoch`),
+    rotateEpoch: (roomId: string) => apiFetch<{ epoch: number }>(`/chat/${roomId}/rotate`, { method: "POST" }),
+    uploadKeyEnvelopes: (roomId: string, epoch: number, envelopes: { deviceId: string; wrappedKey: string; iv: string }[]) =>
+      apiFetch<{ count: number }>(`/chat/${roomId}/key-envelopes`, { method: "POST", body: { epoch, envelopes } }),
+    getMyKeyEnvelopes: (roomId: string) =>
+      apiFetch<{ envelopes: { epoch: number; wrappedKey: string; iv: string; fromDeviceId: string }[] }>(
+        `/chat/${roomId}/key-envelopes`
+      ),
+    listMessages: (roomId: string, before?: string) =>
+      apiFetch<{ messages: ChatMessageDto[]; nextCursor: string | null }>(
+        `/chat/${roomId}/messages${before ? `?before=${encodeURIComponent(before)}` : ""}`
+      ),
+    uploadAttachment: async (blob: Blob): Promise<{ key: string; size: number }> => {
+      const formData = new FormData();
+      formData.append("file", blob, "attachment");
+      return apiFetch<{ key: string; size: number }>("/chat/attachments", { method: "POST", body: formData });
+    },
+    downloadAttachment: async (key: string): Promise<Blob> => {
+      const token = tokenStore.getAccessToken();
+      const res = await fetch(`${API_URL}/chat/attachments/${key}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      if (!res.ok) throw new ApiClientError(res.status, "Couldn't download this attachment");
+      return res.blob();
+    },
   },
 
   linkPreview: {
