@@ -23,6 +23,8 @@ interface AuthContextValue {
   /** Converts the current guest account into a real one, keeping every
    * room/note/device already attached to it. */
   upgradeGuest: (input: { name?: string; email: string; password: string }) => Promise<void>;
+  /** Same, but linking a Google identity instead of setting a password. */
+  upgradeGuestWithGoogle: (idToken: string) => Promise<void>;
   updateProfile: (input: { name?: string; avatarUrl?: string }) => Promise<void>;
   deleteAccount: () => Promise<void>;
   logout: () => void;
@@ -113,6 +115,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [applySession]
   );
 
+  const upgradeGuestWithGoogle = useCallback(
+    async (idToken: string) => {
+      applySession(await api.auth.upgradeWithGoogle(idToken));
+    },
+    [applySession]
+  );
+
   const updateProfile = useCallback(async (input: { name?: string; avatarUrl?: string }) => {
     const { user } = await api.auth.updateMe(input);
     setUser(user);
@@ -133,6 +142,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       continueAsGuest,
       loginWithGoogle,
       upgradeGuest,
+      upgradeGuestWithGoogle,
       updateProfile,
       deleteAccount,
       logout,
@@ -146,6 +156,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       continueAsGuest,
       loginWithGoogle,
       upgradeGuest,
+      upgradeGuestWithGoogle,
       updateProfile,
       deleteAccount,
       logout,

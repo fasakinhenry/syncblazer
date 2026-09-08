@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { Link } from "react-router-dom";
-import { Check, Monitor, Moon, ShareNetwork, SignOut, Sun, UploadSimple } from "@phosphor-icons/react";
+import { ArrowRight, Check, Monitor, Moon, ShareNetwork, SignOut, Sparkle, Sun, UploadSimple } from "@phosphor-icons/react";
 import { useAuth } from "@/context/AuthContext.tsx";
 import { useRooms } from "@/context/RoomContext.tsx";
 import { useTheme } from "@/context/ThemeContext.tsx";
@@ -11,6 +11,7 @@ import type { MyStats } from "@/lib/types.ts";
 import { Avatar } from "@/components/Avatar.tsx";
 import { AvatarPicker } from "@/components/AvatarPicker.tsx";
 import { TrendChart } from "@/components/TrendChart.tsx";
+import { GuestUpgradeModal } from "@/components/GuestUpgradeModal.tsx";
 import { Card } from "@/components/ui/Card.tsx";
 import { Button } from "@/components/ui/Button.tsx";
 import { Input } from "@/components/ui/Input.tsx";
@@ -37,6 +38,7 @@ export function ProfilePage() {
   const [shareCopied, setShareCopied] = useState(false);
   const [stats, setStats] = useState<MyStats | null>(null);
   const [trendView, setTrendView] = useState<"transfers" | "notes">("transfers");
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -119,6 +121,24 @@ export function ProfilePage() {
           {shareCopied ? "Link copied" : "Share profile"}
         </Button>
       </div>
+
+      {user.isGuest && (
+        <Card className="flex items-center justify-between gap-3 border-brand/30 bg-brand-soft p-4">
+          <div className="flex items-center gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand text-white">
+              <Sparkle className="h-4 w-4" weight="fill" />
+            </span>
+            <div>
+              <p className="text-sm font-medium text-text-primary">Upgrade your account</p>
+              <p className="text-xs text-text-secondary">Sign in with email or Google — everything you have carries over.</p>
+            </div>
+          </div>
+          <Button size="sm" onClick={() => setUpgradeOpen(true)} className="shrink-0 gap-1">
+            Upgrade
+            <ArrowRight className="h-3.5 w-3.5" />
+          </Button>
+        </Card>
+      )}
 
       <div className="grid grid-cols-2 gap-3">
         <Card className="flex flex-col items-center gap-1 p-4">
@@ -255,6 +275,12 @@ export function ProfilePage() {
         <SignOut className="h-4 w-4" />
         Sign out
       </Button>
+
+      <GuestUpgradeModal
+        open={upgradeOpen}
+        onClose={() => setUpgradeOpen(false)}
+        onUpgraded={() => toast("Account upgraded — welcome aboard", "success")}
+      />
     </div>
   );
 }

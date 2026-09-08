@@ -12,14 +12,18 @@ const DESKTOP_CLIENT_ID = import.meta.env.VITE_GOOGLE_DESKTOP_CLIENT_ID;
 interface GoogleSignInButtonProps {
   onSuccess: () => void;
   onError: (message: string) => void;
+  /** "upgrade" links a Google identity to the current (guest) account in
+   * place instead of signing in/creating a separate one — see
+   * GuestUpgradeModal.tsx. Defaults to the normal sign-in flow. */
+  mode?: "signin" | "upgrade";
 }
 
 /** Inside the desktop app, Google's embedded popup flow doesn't work
  * (WebView2 blocks the cross-origin storage it needs, and Google distrusts
  * embedded webviews for sign-in generally) — so this opens the real system
  * browser instead via PKCE, the standard pattern for installed apps. */
-function DesktopGoogleSignInButton({ onSuccess, onError }: GoogleSignInButtonProps) {
-  const { loginWithGoogle } = useAuth();
+function DesktopGoogleSignInButton({ onSuccess, onError, mode = "signin" }: GoogleSignInButtonProps) {
+  const { loginWithGoogle, upgradeGuestWithGoogle } = useAuth();
   const [loading, setLoading] = useState(false);
 
   const onClick = async () => {
@@ -30,7 +34,8 @@ function DesktopGoogleSignInButton({ onSuccess, onError }: GoogleSignInButtonPro
     setLoading(true);
     try {
       const idToken = await startGoogleSignIn(DESKTOP_CLIENT_ID);
-      await loginWithGoogle(idToken);
+      if (mode === "upgrade") await upgradeGuestWithGoogle(idToken);
+      else await loginWithGoogle(idToken);
       onSuccess();
     } catch (err) {
       // A Tauri command's Err(String) rejects the JS promise with a plain
@@ -56,8 +61,8 @@ function DesktopGoogleSignInButton({ onSuccess, onError }: GoogleSignInButtonPro
 // Identity Services script has initialized, or a same-sized fallback button
 // before that (or when no client ID is configured) so the layout never
 // shifts and the option is never silently missing.
-function WebGoogleSignInButton({ onSuccess, onError }: GoogleSignInButtonProps) {
-  const { loginWithGoogle } = useAuth();
+function WebGoogleSignInButton({ onSuccess, onError, mode = "signin" }: GoogleSignInButtonProps) {
+  const { loginWithGoogle, upgradeGuestWithGoogle } = useAuth();
   const { effectiveTheme } = useTheme();
   const containerRef = useRef<HTMLDivElement>(null);
   const [googleButtonReady, setGoogleButtonReady] = useState(false);
@@ -74,10 +79,15 @@ function WebGoogleSignInButton({ onSuccess, onError }: GoogleSignInButtonProps) 
           client_id: CLIENT_ID,
           callback: async (response) => {
             try {
-              await loginWithGoogle(response.credential);
+              if (mode === "upgrade") await upgradeGuestWithGoogle(response.credential);
+              else await loginWithGoogle(response.credential);
               onSuccess();
-            } catch {
-              onError("We couldn't sign you in with Google. Please try again.");
+            } catch (err) {
+              onError(
+                err instanceof Error && mode === "upgrade"
+                  ? err.message
+                  : "We couldn't sign you in with Google. Please try again."
+              );
             }
           },
         });
@@ -98,7 +108,7 @@ function WebGoogleSignInButton({ onSuccess, onError }: GoogleSignInButtonProps) 
     return () => {
       cancelled = true;
     };
-  }, [effectiveTheme, loginWithGoogle, onSuccess, onError]);
+  }, [effectiveTheme, loginWithGoogle, upgradeGuestWithGoogle, onSuccess, onError, mode]);
 
   const onFallbackClick = () => {
     onError(

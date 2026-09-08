@@ -2,6 +2,8 @@ import { useState, type FormEvent } from "react";
 import { Modal } from "@/components/ui/Modal.tsx";
 import { Input } from "@/components/ui/Input.tsx";
 import { Button } from "@/components/ui/Button.tsx";
+import { Divider } from "@/components/ui/Divider.tsx";
+import { GoogleSignInButton } from "@/components/GoogleSignInButton.tsx";
 import { useAuth } from "@/context/AuthContext.tsx";
 import { ApiClientError } from "@/lib/api.ts";
 
@@ -15,8 +17,10 @@ interface GuestUpgradeModalProps {
  * user id, so every room/note/device already attached stays attached
  * (unlike sending a guest to /register, which would be unreachable anyway
  * since GuestRoute redirects any already-authenticated user, guests
- * included, away from it). This is what a guest blocked from editing a
- * shared note gets pointed at. */
+ * included, away from it). Offers both upgrade paths: linking Google, or
+ * setting an email/password directly. This is what a guest blocked from
+ * editing a shared note gets pointed at, and what the profile page's
+ * "Upgrade account" button opens. */
 export function GuestUpgradeModal({ open, onClose, onUpgraded }: GuestUpgradeModalProps) {
   const { user, upgradeGuest } = useAuth();
   const [name, setName] = useState(user?.name ?? "");
@@ -25,14 +29,18 @@ export function GuestUpgradeModal({ open, onClose, onUpgraded }: GuestUpgradeMod
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const finish = () => {
+    onUpgraded?.();
+    onClose();
+  };
+
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
     try {
       await upgradeGuest({ name: name.trim() || undefined, email, password });
-      onUpgraded?.();
-      onClose();
+      finish();
     } catch (err) {
       setError(err instanceof ApiClientError ? err.message : "Something went wrong. Please try again.");
     } finally {
@@ -46,6 +54,13 @@ export function GuestUpgradeModal({ open, onClose, onUpgraded }: GuestUpgradeMod
         Keep everything you've already got — your notes, devices, and rooms carry straight over. This just adds a
         real sign-in so you can collaborate with others.
       </p>
+
+      <GoogleSignInButton mode="upgrade" onSuccess={finish} onError={setError} />
+
+      <div className="my-5">
+        <Divider label="or with email" />
+      </div>
+
       <form onSubmit={onSubmit} className="flex flex-col gap-4">
         <div>
           <label htmlFor="upgrade-name" className="mb-1.5 block text-sm font-medium text-text-primary">

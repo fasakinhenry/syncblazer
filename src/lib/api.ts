@@ -161,6 +161,12 @@ export const api = {
         method: "POST",
         body: input,
       }),
+    /** Same, but linking a Google identity instead of setting a password. */
+    upgradeWithGoogle: (idToken: string) =>
+      apiFetch<{ user: User; accessToken: string; refreshToken: string }>("/auth/upgrade/google", {
+        method: "POST",
+        body: { idToken },
+      }),
   },
 
   rooms: {
