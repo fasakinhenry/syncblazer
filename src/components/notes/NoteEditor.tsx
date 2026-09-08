@@ -1,15 +1,13 @@
 import { useEditor, EditorContent, type Editor } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
-import Image from "@tiptap/extension-image";
-import TaskList from "@tiptap/extension-task-list";
-import TaskItem from "@tiptap/extension-task-item";
-import Placeholder from "@tiptap/extension-placeholder";
-import CharacterCount from "@tiptap/extension-character-count";
-import { Markdown } from "tiptap-markdown";
+import Collaboration from "@tiptap/extension-collaboration";
+import CollaborationCaret from "@tiptap/extension-collaboration-caret";
 import { useEffect, useRef, useState, type ChangeEvent, type MouseEvent } from "react";
 import { Copy, TextAa, Scissors, ClipboardText } from "@phosphor-icons/react";
 import { api } from "@/lib/api.ts";
 import { useToast } from "@/context/ToastContext.tsx";
+import { createBaseNoteExtensions } from "@/lib/noteEditorExtensions.ts";
+import { NOTE_YJS_FIELD } from "@/lib/noteYjsSeed.ts";
+import type { NoteCollabHandle } from "@/hooks/useNoteCollab.ts";
 import { NoteEditorToolbar } from "@/components/notes/NoteEditorToolbar.tsx";
 import { NoteContextMenu, type ContextMenuItem } from "@/components/notes/NoteContextMenu.tsx";
 
@@ -27,27 +25,34 @@ interface NoteEditorProps {
   editable: boolean;
   onUpdateMarkdown: (markdown: string) => void;
   onFontChange: (cssFamily: string) => void;
+  /** When present and `ready`, the document is Yjs-backed for live
+   * collaborative editing instead of the plain content string — see
+   * useNoteCollab.ts. Omitted/not-ready falls back to today's plain-text
+   * editor (offline, or before the collab join handshake completes). */
+  collab?: NoteCollabHandle | null;
 }
 
-export function NoteEditor({ noteId, initialContent, fontFamily, editable, onUpdateMarkdown, onFontChange }: NoteEditorProps) {
+export function NoteEditor({ noteId, initialContent, fontFamily, editable, onUpdateMarkdown, onFontChange, collab }: NoteEditorProps) {
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const activeCollab = collab?.ready ? collab : null;
 
   const editor = useEditor(
     {
       extensions: [
-        StarterKit.configure({
-          link: { openOnClick: false, autolink: true, HTMLAttributes: { class: "text-brand underline" } },
-        }),
-        Image.configure({ HTMLAttributes: { class: "rounded-lg max-w-full" } }),
-        TaskList,
-        TaskItem.configure({ nested: true }),
-        Placeholder.configure({ placeholder: "Start typing…" }),
-        CharacterCount,
-        Markdown.configure({ html: false, transformPastedText: true, transformCopiedText: true }),
+        ...createBaseNoteExtensions({ history: !activeCollab }),
+        ...(activeCollab
+          ? [
+              Collaboration.configure({ document: activeCollab.doc, field: NOTE_YJS_FIELD }),
+              CollaborationCaret.configure({
+                provider: { awareness: activeCollab.awareness },
+                user: activeCollab.localUser,
+              }),
+            ]
+          : []),
       ],
-      content: initialContent,
+      ...(activeCollab ? {} : { content: initialContent }),
       editable,
       onUpdate: ({ editor }) => {
         onUpdateMarkdown(getMarkdown(editor));
@@ -56,7 +61,7 @@ export function NoteEditor({ noteId, initialContent, fontFamily, editable, onUpd
         attributes: { class: "note-prose focus:outline-none" },
       },
     },
-    [noteId]
+    [noteId, !!activeCollab]
   );
 
   useEffect(() => {

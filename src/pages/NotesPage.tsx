@@ -22,6 +22,7 @@ import { useRooms } from "@/context/RoomContext.tsx";
 import { useSocket } from "@/context/SocketContext.tsx";
 import { useToast } from "@/context/ToastContext.tsx";
 import { useNotesSync } from "@/hooks/useNotesSync.ts";
+import { useNoteCollab } from "@/hooks/useNoteCollab.ts";
 import {
   cacheNote,
   cacheNotes,
@@ -92,6 +93,15 @@ export function NotesPage() {
   const selected = useMemo(() => notes?.find((n) => n._id === selectedId) ?? null, [notes, selectedId]);
   const selectedRoom = useMemo(() => rooms.find((r) => r._id === selected?.roomId), [rooms, selected]);
 
+  // Live collaborative editing for whichever note is open — see
+  // useNoteCollab.ts. `draftContent` seeds a legacy (pre-collaboration)
+  // note's Yjs doc the first time anyone opens it together; passing it here
+  // doesn't churn the collab session on every keystroke since the hook only
+  // reads it (via a ref) at the moment the join handshake actually resolves.
+  const collab = useNoteCollab(selectedId, draftContent);
+  const collabRef = useRef(collab);
+  collabRef.current = collab;
+
   // Sets selectedId AND the draft fields together, synchronously, in one
   // batch — never rely on a follow-up effect to hydrate the draft from
   // `notes` after selectedId changes. TipTap's editor (see NoteEditor.tsx)
@@ -157,9 +167,17 @@ export function NotesPage() {
       if (!isEcho && isOpenAndQuiet) {
         knownVersion.current[note._id] = note.updatedAt;
         setDraftTitle(note.title);
-        setDraftContent(note.content);
         setDraftFont(note.fontFamily);
-        setRemountKey((k) => k + 1);
+        // While live collaboration is active for this note, content is
+        // already kept in sync by Yjs (see useNoteCollab.ts) — this
+        // broadcast is just the periodic durability snapshot echoing back,
+        // not new information. Applying it here too would remount the
+        // collaborative editor for no reason (a visible flicker) on top of
+        // content that's already correct.
+        if (!collabRef.current?.ready) {
+          setDraftContent(note.content);
+          setRemountKey((k) => k + 1);
+        }
       }
     };
     const onDeleted = ({ noteId }: { noteId: string }) => {
@@ -659,6 +677,26 @@ export function NotesPage() {
               </button>
             </div>
 
+            {collab && collab.presence.length > 0 && (
+              <div className="flex items-center gap-1.5">
+                <div className="flex -space-x-2">
+                  {collab.presence.map((p) => (
+                    <span
+                      key={p.clientId}
+                      title={p.name}
+                      style={{ backgroundColor: p.color }}
+                      className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-background text-[10px] font-semibold uppercase text-white"
+                    >
+                      {p.name.slice(0, 1)}
+                    </span>
+                  ))}
+                </div>
+                <span className="text-xs text-text-secondary">
+                  {collab.presence.length === 1 ? `${collab.presence[0].name} is here too` : `${collab.presence.length} others here`}
+                </span>
+              </div>
+            )}
+
             <NoteEditor
               key={`${selected._id}:${remountKey}`}
               noteId={selected._id}
@@ -667,6 +705,7 @@ export function NotesPage() {
               editable
               onUpdateMarkdown={onChangeContent}
               onFontChange={onChangeFont}
+              collab={collab}
             />
 
             <LinkPreviewCards markdown={draftContent} />
