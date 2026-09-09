@@ -28,6 +28,49 @@ interface DeviceInfo {
   publicKey: string;
 }
 
+// Module-level (not component-scoped) caches: leaving the chat page and
+// coming back unmounts/remounts RoomChatProvider, and without this,
+// EVERY return visit had to redo the whole roster-fetch + envelope-unwrap
+// bootstrap from scratch before it could decrypt anything already on
+// screen — which is exactly the window where a message could get stuck
+// showing "Encrypted message" (see the decrypt effect below for the other
+// half of that fix). This device's identity never changes per room, and a
+// room's unwrapped keys stay valid for the lifetime of the page, so both
+// are safe to keep around across mounts.
+let deviceKeyPairSingleton: CryptoKeyPair | null = null;
+let devicePublicKeyStrSingleton = "";
+let devicePublicKeyUploaded = false;
+
+async function ensureDeviceIdentity(): Promise<{ keyPair: CryptoKeyPair; publicKeyStr: string }> {
+  if (!deviceKeyPairSingleton) {
+    const { keyPair, publicKeyJwk } = await getOrCreateDeviceKeyPair();
+    deviceKeyPairSingleton = keyPair;
+    devicePublicKeyStrSingleton = publicKeyToString(publicKeyJwk);
+  }
+  if (!devicePublicKeyUploaded) {
+    await api.devices.setMyPublicKey(devicePublicKeyStrSingleton).catch(() => undefined);
+    devicePublicKeyUploaded = true;
+  }
+  return { keyPair: deviceKeyPairSingleton, publicKeyStr: devicePublicKeyStrSingleton };
+}
+
+interface RoomChatKeyState {
+  roster: Map<string, DeviceInfo>;
+  roomKeys: Map<number, CryptoKey>;
+  currentEpoch: number;
+}
+
+const roomStateCache = new Map<string, RoomChatKeyState>();
+
+function getRoomState(roomId: string): RoomChatKeyState {
+  let state = roomStateCache.get(roomId);
+  if (!state) {
+    state = { roster: new Map(), roomKeys: new Map(), currentEpoch: 0 };
+    roomStateCache.set(roomId, state);
+  }
+  return state;
+}
+
 export interface ChatMessage {
   _id: string;
   senderId: string;
@@ -77,18 +120,22 @@ export function RoomChatProvider({ roomId, children }: { roomId: string; childre
   const [typingUserIds, setTypingUserIds] = useState<Map<string, number>>(new Map());
   const [pending, setPending] = useState<ChatMessage[]>([]);
 
-  const myKeyPairRef = useRef<CryptoKeyPair | null>(null);
-  const myPublicKeyStrRef = useRef<string>("");
-  const rosterRef = useRef<Map<string, DeviceInfo>>(new Map());
-  const roomKeysRef = useRef<Map<number, CryptoKey>>(new Map());
-  const currentEpochRef = useRef(0);
+  const chatStateRef = useRef<RoomChatKeyState>(getRoomState(roomId));
+  const myKeyPairRef = useRef<CryptoKeyPair | null>(deviceKeyPairSingleton);
+  const myPublicKeyStrRef = useRef<string>(devicePublicKeyStrSingleton);
   const cursorRef = useRef<string | null>(null);
   const keyWaitersRef = useRef<((found: boolean) => void)[]>([]);
   const [keysVersion, setKeysVersion] = useState(0);
 
+  // roomId is effectively fixed for this provider's lifetime (tied to the
+  // route), but keep the cached state pointer in sync if it ever changes.
+  useEffect(() => {
+    chatStateRef.current = getRoomState(roomId);
+  }, [roomId]);
+
   const fetchRoster = useCallback(async () => {
     const { devices } = await api.chat.getDevices(roomId);
-    rosterRef.current = new Map(devices.map((d) => [d.deviceId, d]));
+    chatStateRef.current.roster = new Map(devices.map((d) => [d.deviceId, d]));
     return devices;
   }, [roomId]);
 
@@ -97,13 +144,14 @@ export function RoomChatProvider({ roomId, children }: { roomId: string; childre
     const keyPair = myKeyPairRef.current;
     if (!keyPair) return;
 
+    const state = chatStateRef.current;
     for (const envelope of envelopes) {
-      if (roomKeysRef.current.has(envelope.epoch)) continue;
-      const senderDevice = rosterRef.current.get(envelope.fromDeviceId);
+      if (state.roomKeys.has(envelope.epoch)) continue;
+      const senderDevice = state.roster.get(envelope.fromDeviceId);
       if (!senderDevice) continue;
       try {
         const key = await unwrapRoomKey(envelope.wrappedKey, envelope.iv, keyPair.privateKey, senderDevice.publicKey);
-        roomKeysRef.current.set(envelope.epoch, key);
+        state.roomKeys.set(envelope.epoch, key);
       } catch {
         // Wrapped for a device we no longer recognize, or corrupted — skip.
       }
@@ -121,8 +169,9 @@ export function RoomChatProvider({ roomId, children }: { roomId: string; childre
       devices.map(async (d) => ({ deviceId: d.deviceId, ...(await wrapRoomKeyForDevice(roomKey, keyPair.privateKey, d.publicKey)) }))
     );
     if (envelopes.length > 0) await api.chat.uploadKeyEnvelopes(roomId, epoch, envelopes);
-    roomKeysRef.current.set(epoch, roomKey);
-    currentEpochRef.current = Math.max(currentEpochRef.current, epoch);
+    const state = chatStateRef.current;
+    state.roomKeys.set(epoch, roomKey);
+    state.currentEpoch = Math.max(state.currentEpoch, epoch);
     setKeysVersion((v) => v + 1);
   }, [roomId, fetchRoster]);
 
@@ -131,7 +180,8 @@ export function RoomChatProvider({ roomId, children }: { roomId: string; childre
   // new member can be let in and a removed one loses access going forward.
   const rotateAndDistribute = useCallback(async () => {
     const keyPair = myKeyPairRef.current;
-    const currentKey = roomKeysRef.current.get(currentEpochRef.current);
+    const state = chatStateRef.current;
+    const currentKey = state.roomKeys.get(state.currentEpoch);
     if (!keyPair || !currentKey) return;
     try {
       const devices = await fetchRoster();
@@ -141,8 +191,8 @@ export function RoomChatProvider({ roomId, children }: { roomId: string; childre
         devices.map(async (d) => ({ deviceId: d.deviceId, ...(await wrapRoomKeyForDevice(roomKey, keyPair.privateKey, d.publicKey)) }))
       );
       if (envelopes.length > 0) await api.chat.uploadKeyEnvelopes(roomId, epoch, envelopes);
-      roomKeysRef.current.set(epoch, roomKey);
-      currentEpochRef.current = Math.max(currentEpochRef.current, epoch);
+      state.roomKeys.set(epoch, roomKey);
+      state.currentEpoch = Math.max(state.currentEpoch, epoch);
       setKeysVersion((v) => v + 1);
     } catch {
       // Best-effort — another member's client will pick this up next time
@@ -150,37 +200,38 @@ export function RoomChatProvider({ roomId, children }: { roomId: string; childre
     }
   }, [roomId, fetchRoster]);
 
-  // Bootstrap: keypair -> upload public key -> roster -> unwrap what we
-  // already have -> if we're still missing the current epoch's key, ask
-  // around, then self-initialize if nobody answers in time.
+  // Bootstrap: device identity -> roster -> unwrap what we already have ->
+  // if we're still missing the current epoch's key, ask around, then
+  // self-initialize if nobody answers in time. Cheap/fast on a return
+  // visit to a room whose key this device already holds and whose epoch
+  // hasn't changed — no waiting, no re-request, just confirms and moves on.
   useEffect(() => {
     if (!socket || !connected) return;
     let cancelled = false;
 
     (async () => {
-      const { keyPair, publicKeyJwk } = await getOrCreateDeviceKeyPair();
+      const { keyPair, publicKeyStr } = await ensureDeviceIdentity();
       if (cancelled) return;
       myKeyPairRef.current = keyPair;
-      myPublicKeyStrRef.current = publicKeyToString(publicKeyJwk);
-      await api.devices.setMyPublicKey(myPublicKeyStrRef.current).catch(() => undefined);
-      if (cancelled) return;
+      myPublicKeyStrRef.current = publicKeyStr;
 
       await fetchRoster();
       if (cancelled) return;
 
       const { epoch } = await api.chat.getEpoch(roomId);
-      currentEpochRef.current = epoch;
+      const state = chatStateRef.current;
+      state.currentEpoch = epoch;
       await tryUnwrapEnvelopes();
       if (cancelled) return;
 
-      if (epoch > 0 && !roomKeysRef.current.has(epoch)) {
+      if (epoch > 0 && !state.roomKeys.has(epoch)) {
         socket.emit("chat:key-request", { roomId, publicKey: myPublicKeyStrRef.current });
         const found = await new Promise<boolean>((resolve) => {
           keyWaitersRef.current.push(resolve);
           setTimeout(() => resolve(false), KEY_REQUEST_TIMEOUT_MS);
         });
         if (cancelled) return;
-        if (!found && !roomKeysRef.current.has(currentEpochRef.current)) {
+        if (!found && !state.roomKeys.has(state.currentEpoch)) {
           await becomeKeyInitializer();
         }
       } else if (epoch === 0) {
@@ -261,16 +312,17 @@ export function RoomChatProvider({ roomId, children }: { roomId: string; childre
       if (payload.roomId !== roomId) return;
       const keyPair = myKeyPairRef.current;
       if (!keyPair) return;
-      let senderDevice = rosterRef.current.get(payload.fromDeviceId);
+      const state = chatStateRef.current;
+      let senderDevice = state.roster.get(payload.fromDeviceId);
       if (!senderDevice) {
         await fetchRoster();
-        senderDevice = rosterRef.current.get(payload.fromDeviceId);
+        senderDevice = state.roster.get(payload.fromDeviceId);
       }
       if (!senderDevice) return;
       try {
         const key = await unwrapRoomKey(payload.wrappedKey, payload.iv, keyPair.privateKey, senderDevice.publicKey);
-        roomKeysRef.current.set(payload.epoch, key);
-        currentEpochRef.current = Math.max(currentEpochRef.current, payload.epoch);
+        state.roomKeys.set(payload.epoch, key);
+        state.currentEpoch = Math.max(state.currentEpoch, payload.epoch);
         setKeysVersion((v) => v + 1);
         const waiters = keyWaitersRef.current;
         keyWaitersRef.current = [];
@@ -283,11 +335,12 @@ export function RoomChatProvider({ roomId, children }: { roomId: string; childre
     const onKeyRequest = async (payload: { roomId: string; deviceId: string; publicKey: string }) => {
       if (payload.roomId !== roomId) return;
       const keyPair = myKeyPairRef.current;
-      const currentKey = roomKeysRef.current.get(currentEpochRef.current);
+      const state = chatStateRef.current;
+      const currentKey = state.roomKeys.get(state.currentEpoch);
       if (!keyPair || !currentKey) return;
       try {
         const envelope = await wrapRoomKeyForDevice(currentKey, keyPair.privateKey, payload.publicKey);
-        await api.chat.uploadKeyEnvelopes(roomId, currentEpochRef.current, [{ deviceId: payload.deviceId, ...envelope }]);
+        await api.chat.uploadKeyEnvelopes(roomId, state.currentEpoch, [{ deviceId: payload.deviceId, ...envelope }]);
       } catch {
         // Best-effort — the requester will time out and self-initialize.
       }
@@ -327,15 +380,24 @@ export function RoomChatProvider({ roomId, children }: { roomId: string; childre
     return () => clearInterval(interval);
   }, []);
 
-  // Decrypt whatever we can whenever new messages or new keys show up.
+  // Decrypt whatever we can whenever new messages or new keys show up. A
+  // message that failed only because we didn't hold its epoch's key YET
+  // (e.g. right after a remount, before key bootstrap finishes) must be
+  // retried once that key actually arrives — never treat "no key yet" as a
+  // permanent result, only "genuinely never had this epoch's key" is.
   useEffect(() => {
     let cancelled = false;
     (async () => {
       const updates = new Map<string, ChatPayload | null>();
       for (const msg of rawMessages) {
-        if (decryptedById.has(msg._id)) continue;
-        const key = roomKeysRef.current.get(msg.epoch);
-        updates.set(msg._id, key ? await decryptMessage(key, msg.ciphertext, msg.iv) : null);
+        const existing = decryptedById.get(msg._id);
+        if (existing !== undefined && existing !== null) continue; // already decrypted successfully
+        const key = chatStateRef.current.roomKeys.get(msg.epoch);
+        if (!key) {
+          if (existing === undefined) updates.set(msg._id, null);
+          continue;
+        }
+        updates.set(msg._id, await decryptMessage(key, msg.ciphertext, msg.iv));
       }
       if (!cancelled && updates.size > 0) {
         setDecryptedById((prev) => {
@@ -354,7 +416,8 @@ export function RoomChatProvider({ roomId, children }: { roomId: string; childre
   const sendText = useCallback(
     (text: string, linkPreviewUrl?: string) => {
       if (!socket || !user) return;
-      const key = roomKeysRef.current.get(currentEpochRef.current);
+      const state = chatStateRef.current;
+      const key = state.roomKeys.get(state.currentEpoch);
       if (!key) {
         toast("Chat isn't ready yet — try again in a moment.", "error");
         return;
@@ -379,7 +442,7 @@ export function RoomChatProvider({ roomId, children }: { roomId: string; childre
           clientMsgId,
           ciphertext,
           iv,
-          epoch: currentEpochRef.current,
+          epoch: state.currentEpoch,
           type: "text",
         });
       });
@@ -390,7 +453,8 @@ export function RoomChatProvider({ roomId, children }: { roomId: string; childre
   const sendAttachment = useCallback(
     async (file: File, type: "image" | "audio") => {
       if (!socket || !user) return;
-      const key = roomKeysRef.current.get(currentEpochRef.current);
+      const state = chatStateRef.current;
+      const key = state.roomKeys.get(state.currentEpoch);
       if (!key) {
         toast("Chat isn't ready yet — try again in a moment.", "error");
         return;
@@ -422,7 +486,7 @@ export function RoomChatProvider({ roomId, children }: { roomId: string; childre
           fileName: file.name,
         };
         const { ciphertext, iv } = await encryptMessage(key, payload);
-        socket.emit("chat:message", { roomId, clientMsgId, ciphertext, iv, epoch: currentEpochRef.current, type });
+        socket.emit("chat:message", { roomId, clientMsgId, ciphertext, iv, epoch: state.currentEpoch, type });
       } catch {
         setPending((prev) => prev.filter((p) => p._id !== clientMsgId));
         toast("Couldn't send that attachment. Try again.", "error");
