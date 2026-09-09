@@ -1,7 +1,20 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
-import { ArrowLeft, ChatCircleDots, Check, CloudArrowUp, Copy, Fire, PaperPlaneTilt, Trash, UploadSimple, WifiHigh, X } from "@phosphor-icons/react";
+import {
+  ArrowLeft,
+  ChatCircleDots,
+  Check,
+  CloudArrowUp,
+  Copy,
+  Fire,
+  PaperPlaneTilt,
+  SignOut,
+  Trash,
+  UploadSimple,
+  WifiHigh,
+  X,
+} from "@phosphor-icons/react";
 import { api, ApiClientError } from "@/lib/api.ts";
 import type { Activity, Device, Room, RoomMember } from "@/lib/types.ts";
 import { useAuth } from "@/context/AuthContext.tsx";
@@ -38,7 +51,8 @@ export function RoomDetailPage() {
   const [inviting, setInviting] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
-  const [hasUnreadChat, setHasUnreadChat] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [leaving, setLeaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const targetRef = useRef<{ id: string; name: string } | null>(null);
   const currentDeviceId = getCurrentDevice()?._id;
@@ -65,11 +79,8 @@ export function RoomDetailPage() {
   useEffect(() => {
     if (!roomId) return;
     api.chat
-      .getLatest(roomId)
-      .then(({ createdAt, senderId }) => {
-        if (!createdAt || senderId === user?.id) return;
-        setHasUnreadChat(new Date(createdAt).getTime() > getLastRead(roomId));
-      })
+      .getUnread(roomId, getLastRead(roomId))
+      .then(({ unreadCount }) => setUnreadCount(unreadCount))
       .catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId]);
@@ -105,7 +116,7 @@ export function RoomDetailPage() {
     // manual reload; the backend emits this alongside every presence change.
     const onNetworkChanged = () => load();
     const onChatActivity = (payload: { roomId: string; senderId: string }) => {
-      if (payload.roomId === roomId && payload.senderId !== user?.id) setHasUnreadChat(true);
+      if (payload.roomId === roomId && payload.senderId !== user?.id) setUnreadCount((prev) => prev + 1);
     };
 
     socket.on("device:presence", onPresence);
@@ -152,6 +163,19 @@ export function RoomDetailPage() {
     await api.rooms.remove(room._id);
     toast("Room deleted", "info");
     navigate("/room");
+  };
+
+  const leaveRoom = async () => {
+    if (!room || !window.confirm(`Leave "${room.name}"? You'll need a new invite or the join code to get back in.`)) return;
+    setLeaving(true);
+    try {
+      await api.rooms.leave(room._id);
+      toast("You left the room", "info");
+      navigate("/room");
+    } catch (err) {
+      toast(err instanceof ApiClientError ? err.message : "Couldn't leave the room. Try again.", "error");
+      setLeaving(false);
+    }
   };
 
   const onInvite = async (e: FormEvent) => {
@@ -214,15 +238,17 @@ export function RoomDetailPage() {
             variant="secondary"
             size="sm"
             onClick={() => {
-              setHasUnreadChat(false);
+              setUnreadCount(0);
               navigate(`/rooms/${room._id}/chat`);
             }}
             className="relative shrink-0 gap-1.5"
           >
             <ChatCircleDots className="h-3.5 w-3.5" />
             Chat
-            {hasUnreadChat && (
-              <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border-2 border-surface bg-danger" />
+            {unreadCount > 0 && (
+              <span className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-background bg-danger px-1 text-[10px] font-semibold text-white">
+                {unreadCount > 9 ? "9+" : unreadCount}
+              </span>
             )}
           </Button>
         )}
@@ -233,6 +259,17 @@ export function RoomDetailPage() {
             aria-label="Delete room"
           >
             <Trash className="h-4 w-4" />
+          </button>
+        )}
+        {room.ownerId !== user?.id && !room.isDefault && (
+          <button
+            onClick={leaveRoom}
+            disabled={leaving}
+            className="shrink-0 rounded-md p-2 text-text-secondary hover:bg-danger/10 hover:text-danger disabled:opacity-50"
+            aria-label="Leave room"
+            title="Leave room"
+          >
+            <SignOut className="h-4 w-4" />
           </button>
         )}
       </div>

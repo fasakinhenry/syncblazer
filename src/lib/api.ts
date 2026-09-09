@@ -187,6 +187,7 @@ export const api = {
       apiFetch<{ status: "added" | "invited" }>(`/rooms/${roomId}/invite`, { method: "POST", body: { email } }),
     removeMember: (roomId: string, userId: string) =>
       apiFetch<{ roomId: string; userId: string }>(`/rooms/${roomId}/members/${userId}`, { method: "DELETE" }),
+    leave: (roomId: string) => apiFetch<{ roomId: string }>(`/rooms/${roomId}/leave`, { method: "POST" }),
   },
 
   devices: {
@@ -281,7 +282,10 @@ export const api = {
       apiFetch<{ messages: ChatMessageDto[]; nextCursor: string | null }>(
         `/chat/${roomId}/messages${before ? `?before=${encodeURIComponent(before)}` : ""}`
       ),
-    getLatest: (roomId: string) => apiFetch<{ createdAt: string | null; senderId: string | null }>(`/chat/${roomId}/latest`),
+    getUnread: (roomId: string, since?: number) =>
+      apiFetch<{ createdAt: string | null; senderId: string | null; unreadCount: number }>(
+        `/chat/${roomId}/unread${since ? `?since=${encodeURIComponent(new Date(since).toISOString())}` : ""}`
+      ),
     uploadAttachment: async (blob: Blob): Promise<{ key: string; size: number }> => {
       const formData = new FormData();
       formData.append("file", blob, "attachment");
