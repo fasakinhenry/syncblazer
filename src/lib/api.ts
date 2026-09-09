@@ -281,6 +281,7 @@ export const api = {
       apiFetch<{ messages: ChatMessageDto[]; nextCursor: string | null }>(
         `/chat/${roomId}/messages${before ? `?before=${encodeURIComponent(before)}` : ""}`
       ),
+    getLatest: (roomId: string) => apiFetch<{ createdAt: string | null; senderId: string | null }>(`/chat/${roomId}/latest`),
     uploadAttachment: async (blob: Blob): Promise<{ key: string; size: number }> => {
       const formData = new FormData();
       formData.append("file", blob, "attachment");

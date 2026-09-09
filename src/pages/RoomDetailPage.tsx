@@ -19,6 +19,7 @@ import { ShareTargets } from "@/components/ShareTargets.tsx";
 import { PageSpinner } from "@/components/ui/Spinner.tsx";
 import { EmptyState } from "@/components/ui/EmptyState.tsx";
 import { ConfettiBurst } from "@/components/ConfettiBurst.tsx";
+import { getLastRead } from "@/lib/chatReadState.ts";
 
 export function RoomDetailPage() {
   const { roomId } = useParams<{ roomId: string }>();
@@ -37,6 +38,7 @@ export function RoomDetailPage() {
   const [inviting, setInviting] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const [hasUnreadChat, setHasUnreadChat] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const targetRef = useRef<{ id: string; name: string } | null>(null);
   const currentDeviceId = getCurrentDevice()?._id;
@@ -59,6 +61,18 @@ export function RoomDetailPage() {
   };
 
   useEffect(load, [roomId]);
+
+  useEffect(() => {
+    if (!roomId) return;
+    api.chat
+      .getLatest(roomId)
+      .then(({ createdAt, senderId }) => {
+        if (!createdAt || senderId === user?.id) return;
+        setHasUnreadChat(new Date(createdAt).getTime() > getLastRead(roomId));
+      })
+      .catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomId]);
 
   useEffect(() => {
     if (!socket || !roomId) return;
@@ -90,6 +104,9 @@ export function RoomDetailPage() {
     // another of your devices) needs a real refetch to show up without a
     // manual reload; the backend emits this alongside every presence change.
     const onNetworkChanged = () => load();
+    const onChatActivity = (payload: { roomId: string; senderId: string }) => {
+      if (payload.roomId === roomId && payload.senderId !== user?.id) setHasUnreadChat(true);
+    };
 
     socket.on("device:presence", onPresence);
     socket.on("activity:new", onActivity);
@@ -97,6 +114,7 @@ export function RoomDetailPage() {
     socket.on("room:member-removed", onMemberRemoved);
     socket.on("room:removed-from", onRemovedFrom);
     socket.on("network:changed", onNetworkChanged);
+    socket.on("chat:activity", onChatActivity);
     return () => {
       socket.off("device:presence", onPresence);
       socket.off("activity:new", onActivity);
@@ -104,6 +122,7 @@ export function RoomDetailPage() {
       socket.off("room:member-removed", onMemberRemoved);
       socket.off("room:removed-from", onRemovedFrom);
       socket.off("network:changed", onNetworkChanged);
+      socket.off("chat:activity", onChatActivity);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket, roomId]);
@@ -191,9 +210,20 @@ export function RoomDetailPage() {
           </p>
         </div>
         {!room.isDefault && (
-          <Button variant="secondary" size="sm" onClick={() => navigate(`/rooms/${room._id}/chat`)} className="shrink-0 gap-1.5">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              setHasUnreadChat(false);
+              navigate(`/rooms/${room._id}/chat`);
+            }}
+            className="relative shrink-0 gap-1.5"
+          >
             <ChatCircleDots className="h-3.5 w-3.5" />
             Chat
+            {hasUnreadChat && (
+              <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border-2 border-surface bg-danger" />
+            )}
           </Button>
         )}
         {room.ownerId === user?.id && !room.isDefault && (

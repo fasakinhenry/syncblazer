@@ -2,15 +2,21 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, LockKey } from "@phosphor-icons/react";
 import { api } from "@/lib/api.ts";
-import type { Room } from "@/lib/types.ts";
+import type { Room, RoomMember } from "@/lib/types.ts";
 import { RoomChatProvider, useRoomChat } from "@/context/RoomChatContext.tsx";
 import { ChatMessageBubble } from "@/components/chat/ChatMessageBubble.tsx";
 import { ChatComposer } from "@/components/chat/ChatComposer.tsx";
 import { PageSpinner } from "@/components/ui/Spinner.tsx";
 import { Button } from "@/components/ui/Button.tsx";
 
+function typingLabel(names: string[]): string {
+  if (names.length === 1) return `${names[0]} is typing…`;
+  if (names.length === 2) return `${names[0]} and ${names[1]} are typing…`;
+  return `${names[0]} and ${names.length - 1} others are typing…`;
+}
+
 function ChatBody() {
-  const { ready, messages, hasMore, loadingMore, loadMore, someoneTyping } = useRoomChat();
+  const { ready, messages, hasMore, loadingMore, loadMore, typingNames } = useRoomChat();
   const scrollRef = useRef<HTMLDivElement>(null);
   const prevLengthRef = useRef(0);
 
@@ -45,7 +51,9 @@ function ChatBody() {
             ))}
           </div>
         )}
-        {someoneTyping && <p className="mt-2 px-1 text-xs italic text-text-secondary">Someone is typing…</p>}
+        {typingNames.length > 0 && (
+          <p className="mt-2 px-1 text-xs italic text-text-secondary">{typingLabel(typingNames)}</p>
+        )}
       </div>
       <ChatComposer />
     </>
@@ -56,10 +64,14 @@ export function RoomChatPage() {
   const { roomId } = useParams<{ roomId: string }>();
   const navigate = useNavigate();
   const [room, setRoom] = useState<Room | null>(null);
+  const [members, setMembers] = useState<RoomMember[]>([]);
 
   useEffect(() => {
     if (!roomId) return;
-    api.rooms.get(roomId).then(({ room }) => setRoom(room));
+    api.rooms.get(roomId).then(({ room, members }) => {
+      setRoom(room);
+      setMembers(members);
+    });
   }, [roomId]);
 
   if (!roomId) return null;
@@ -82,7 +94,7 @@ export function RoomChatPage() {
           </p>
         </div>
       </div>
-      <RoomChatProvider roomId={roomId}>
+      <RoomChatProvider roomId={roomId} members={members}>
         <ChatBody />
       </RoomChatProvider>
     </div>

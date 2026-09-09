@@ -67,9 +67,9 @@ export function ChatComposer() {
         >
           <Trash className="h-4 w-4" />
         </button>
-        <div className="flex h-9 flex-1 items-center gap-2 rounded-full border border-danger/30 bg-background px-3">
+        <div className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-full border border-danger/30 bg-background px-3">
           <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-danger" />
-          <WaveformBars levels={liveBars} className="flex-1 text-danger" />
+          <WaveformBars levels={liveBars} className="min-w-0 flex-1 text-danger" />
           <span className="shrink-0 font-mono text-xs text-text-secondary">{formatElapsed(elapsedSec)}</span>
         </div>
         <button

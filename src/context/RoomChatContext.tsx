@@ -3,6 +3,7 @@ import { useSocket } from "@/context/SocketContext.tsx";
 import { useAuth } from "@/context/AuthContext.tsx";
 import { useToast } from "@/context/ToastContext.tsx";
 import { api } from "@/lib/api.ts";
+import { markRead } from "@/lib/chatReadState.ts";
 import type { ChatMessageDto, ChatMessageType } from "@/lib/types.ts";
 import {
   decryptAttachment,
@@ -92,7 +93,8 @@ interface RoomChatValue {
   hasMore: boolean;
   loadingMore: boolean;
   loadMore: () => void;
-  someoneTyping: boolean;
+  /** Names of everyone else currently typing, e.g. ["Henry"] or ["Henry", "Ada"] — empty when nobody is. */
+  typingNames: string[];
   sendText: (text: string, linkPreviewUrl?: string) => void;
   sendAttachment: (file: File, type: "image" | "audio", meta?: { waveform?: number[]; durationSec?: number }) => Promise<void>;
   notifyTyping: () => void;
@@ -107,10 +109,22 @@ export function useRoomChat(): RoomChatValue {
   return ctx;
 }
 
-export function RoomChatProvider({ roomId, children }: { roomId: string; children: ReactNode }) {
+export function RoomChatProvider({
+  roomId,
+  members,
+  children,
+}: {
+  roomId: string;
+  /** Room roster for resolving a typing userId to a display name — the
+   * chat context otherwise never fetches room membership itself. */
+  members: { _id: string; name: string }[];
+  children: ReactNode;
+}) {
   const { socket, connected } = useSocket();
   const { user } = useAuth();
   const { toast } = useToast();
+
+  const nameById = useMemo(() => new Map(members.map((m) => [m._id, m.name])), [members]);
 
   const [ready, setReady] = useState(false);
   const [rawMessages, setRawMessages] = useState<ChatMessageDto[]>([]);
@@ -263,6 +277,10 @@ export function RoomChatProvider({ roomId, children }: { roomId: string; childre
         setRawMessages(messages);
         cursorRef.current = nextCursor;
         setHasMore(!!nextCursor);
+        // Opening chat and seeing the history counts as reading it —
+        // clears any unread badge for this room.
+        const latest = messages[messages.length - 1];
+        if (latest) markRead(roomId, new Date(latest.createdAt).getTime());
       })
       .catch(() => undefined);
 
@@ -298,6 +316,8 @@ export function RoomChatProvider({ roomId, children }: { roomId: string; childre
       if (msg.clientMsgId) {
         setPending((prev) => prev.filter((p) => p._id !== msg.clientMsgId));
       }
+      // Chat is open and this message just showed up — that's "read" too.
+      markRead(roomId, new Date(msg.createdAt).getTime());
     };
 
     const onTyping = ({ userId }: { roomId: string; userId: string }) => {
@@ -512,9 +532,12 @@ export function RoomChatProvider({ roomId, children }: { roomId: string; childre
     }
   }, []);
 
-  const someoneTyping = useMemo(
-    () => [...typingUserIds.keys()].some((id) => id !== user?.id),
-    [typingUserIds, user?.id]
+  const typingNames = useMemo(
+    () =>
+      [...typingUserIds.keys()]
+        .filter((id) => id !== user?.id)
+        .map((id) => nameById.get(id) ?? "Someone"),
+    [typingUserIds, user?.id, nameById]
   );
 
   const messages = useMemo<ChatMessage[]>(() => {
@@ -532,8 +555,8 @@ export function RoomChatProvider({ roomId, children }: { roomId: string; childre
   }, [rawMessages, decryptedById, pending, user?.id]);
 
   const value = useMemo<RoomChatValue>(
-    () => ({ ready, messages, hasMore, loadingMore, loadMore, someoneTyping, sendText, sendAttachment, notifyTyping, resolveAttachmentUrl }),
-    [ready, messages, hasMore, loadingMore, loadMore, someoneTyping, sendText, sendAttachment, notifyTyping, resolveAttachmentUrl]
+    () => ({ ready, messages, hasMore, loadingMore, loadMore, typingNames, sendText, sendAttachment, notifyTyping, resolveAttachmentUrl }),
+    [ready, messages, hasMore, loadingMore, loadMore, typingNames, sendText, sendAttachment, notifyTyping, resolveAttachmentUrl]
   );
 
   return <RoomChatContext.Provider value={value}>{children}</RoomChatContext.Provider>;
