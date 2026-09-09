@@ -135,6 +135,11 @@ export interface ChatPayload {
   attachmentIvB64?: string;
   mimeType?: string;
   fileName?: string;
+  /** Voice notes only: a fixed-length array of normalized (0..1) loudness
+   * samples captured while recording, so the received bubble can render
+   * the same WhatsApp-style bars immediately without decoding audio. */
+  waveform?: number[];
+  durationSec?: number;
   /** A single link found in the text, resolved client-side only — see
    * linkPreviewCache.ts. Kept inside the encrypted payload so the URL
    * itself, and the fact a preview was fetched, never touch the server in

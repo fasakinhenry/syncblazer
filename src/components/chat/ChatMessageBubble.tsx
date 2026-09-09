@@ -1,10 +1,18 @@
 import { useEffect, useRef, useState } from "react";
-import { LockKey, MusicNote } from "@phosphor-icons/react";
+import { LockKey, Pause, Play, Spinner } from "@phosphor-icons/react";
 import { Avatar } from "@/components/Avatar.tsx";
 import { formatRelativeTime } from "@/lib/format.ts";
 import type { ChatMessage } from "@/context/RoomChatContext.tsx";
 import { useRoomChat } from "@/context/RoomChatContext.tsx";
 import { ChatLinkPreview } from "@/components/chat/ChatLinkPreview.tsx";
+import { WaveformBars } from "@/components/chat/WaveformBars.tsx";
+
+function formatDuration(sec: number): string {
+  if (!Number.isFinite(sec) || sec < 0) return "0:00";
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
 
 const URL_PATTERN = /\bhttps?:\/\/[^\s)<>"'\]]+/gi;
 
@@ -50,31 +58,109 @@ function ChatImage({ storageKey, keyB64, ivB64, mimeType }: { storageKey: string
   return <img src={url} alt="" className="max-h-64 max-w-64 rounded-lg object-cover" />;
 }
 
-function ChatAudio({ storageKey, keyB64, ivB64, mimeType }: { storageKey: string; keyB64: string; ivB64: string; mimeType?: string }) {
+interface ChatAudioProps {
+  storageKey: string;
+  keyB64: string;
+  ivB64: string;
+  mimeType?: string;
+  waveform?: number[];
+  durationSec?: number;
+  isMine: boolean;
+}
+
+const FALLBACK_BARS = new Array(40).fill(0.35);
+
+function ChatAudio({ storageKey, keyB64, ivB64, mimeType, waveform, durationSec, isMine }: ChatAudioProps) {
   const { resolveAttachmentUrl } = useRoomChat();
   const [url, setUrl] = useState<string | null>(null);
-  const fetchedRef = useRef(false);
+  const [loading, setLoading] = useState(false);
+  const [playing, setPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [duration, setDuration] = useState(durationSec ?? 0);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const wantsPlayRef = useRef(false);
 
-  const load = () => {
-    if (fetchedRef.current) return;
-    fetchedRef.current = true;
-    resolveAttachmentUrl({ attachmentKey: storageKey, attachmentKeyB64: keyB64, attachmentIvB64: ivB64, mimeType }).then(setUrl);
+  useEffect(() => {
+    return () => {
+      if (url) URL.revokeObjectURL(url);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [url]);
+
+  useEffect(() => {
+    if (url && wantsPlayRef.current) {
+      wantsPlayRef.current = false;
+      void audioRef.current?.play();
+    }
+  }, [url]);
+
+  const togglePlay = async () => {
+    if (playing) {
+      audioRef.current?.pause();
+      return;
+    }
+    if (!url) {
+      setLoading(true);
+      wantsPlayRef.current = true;
+      const resolved = await resolveAttachmentUrl({ attachmentKey: storageKey, attachmentKeyB64: keyB64, attachmentIvB64: ivB64, mimeType });
+      setLoading(false);
+      if (!resolved) return;
+      setUrl(resolved);
+      return;
+    }
+    void audioRef.current?.play();
   };
 
-  if (!url) {
-    return (
+  return (
+    <div className="flex w-56 items-center gap-2">
+      <audio
+        ref={audioRef}
+        src={url ?? undefined}
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+        onEnded={() => {
+          setPlaying(false);
+          setProgress(0);
+        }}
+        onTimeUpdate={(e) => {
+          const el = e.currentTarget;
+          if (el.duration && Number.isFinite(el.duration)) setProgress(el.currentTime / el.duration);
+        }}
+        onLoadedMetadata={(e) => {
+          const d = e.currentTarget.duration;
+          if (Number.isFinite(d)) setDuration(d);
+        }}
+        className="hidden"
+      />
       <button
         type="button"
-        onClick={load}
-        className="flex items-center gap-2 rounded-lg bg-surface-hover px-3 py-2 text-xs text-text-secondary hover:bg-surface"
+        onClick={togglePlay}
+        disabled={loading}
+        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
+          isMine ? "bg-white/20 text-white" : "bg-brand text-white"
+        }`}
+        aria-label={playing ? "Pause voice note" : "Play voice note"}
       >
-        <MusicNote className="h-4 w-4" />
-        Tap to decrypt and play
+        {loading ? (
+          <Spinner className="h-4 w-4 animate-spin" />
+        ) : playing ? (
+          <Pause className="h-3.5 w-3.5" weight="fill" />
+        ) : (
+          <Play className="h-3.5 w-3.5" weight="fill" />
+        )}
       </button>
-    );
-  }
-  // eslint-disable-next-line jsx-a11y/media-has-caption
-  return <audio src={url} controls className="h-9 max-w-64" />;
+      <WaveformBars
+        levels={waveform && waveform.length > 0 ? waveform : FALLBACK_BARS}
+        progress={progress}
+        activeColor={isMine ? "#FFFFFF" : "var(--color-brand, #287BFF)"}
+        mutedColor={isMine ? "#FFFFFF" : "currentColor"}
+        className="flex-1"
+      />
+      <span className={`shrink-0 font-mono text-[10px] ${isMine ? "text-white/80" : "text-text-secondary"}`}>
+        {formatDuration(playing || progress > 0 ? progress * duration : duration)}
+      </span>
+    </div>
+  );
 }
 
 export function ChatMessageBubble({ message }: { message: ChatMessage }) {
@@ -108,6 +194,9 @@ export function ChatMessageBubble({ message }: { message: ChatMessage }) {
               keyB64={payload.attachmentKeyB64!}
               ivB64={payload.attachmentIvB64!}
               mimeType={payload.mimeType}
+              waveform={payload.waveform}
+              durationSec={payload.durationSec}
+              isMine={isMine}
             />
           ) : (
             <>

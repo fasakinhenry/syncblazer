@@ -1,17 +1,26 @@
 import { useRef, useState, type ChangeEvent, type FormEvent } from "react";
-import { Image, Microphone, PaperPlaneTilt, Stop } from "@phosphor-icons/react";
+import { Image, Microphone, PaperPlaneTilt, Stop, Trash } from "@phosphor-icons/react";
 import { useToast } from "@/context/ToastContext.tsx";
 import { useRoomChat } from "@/context/RoomChatContext.tsx";
 import { extractUrls } from "@/lib/linkPreviewCache.ts";
+import { useVoiceRecorder } from "@/hooks/useVoiceRecorder.ts";
+import { WaveformBars } from "@/components/chat/WaveformBars.tsx";
+
+function formatElapsed(sec: number): string {
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
 
 export function ChatComposer() {
   const { sendText, sendAttachment, notifyTyping } = useRoomChat();
   const { toast } = useToast();
   const [text, setText] = useState("");
-  const [recording, setRecording] = useState(false);
+  const [sending, setSending] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
+  const { recording, liveBars, elapsedSec, start, stop, cancel } = useVoiceRecorder((message) => toast(message, "error"));
+
+  const hasText = text.trim().length > 0;
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -33,33 +42,49 @@ export function ChatComposer() {
     await sendAttachment(file, "image");
   };
 
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
-      chunksRef.current = [];
-      recorder.ondataavailable = (evt) => {
-        if (evt.data.size > 0) chunksRef.current.push(evt.data);
-      };
-      recorder.onstop = async () => {
-        stream.getTracks().forEach((t) => t.stop());
-        const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" });
-        const file = new File([blob], "voice-note.webm", { type: blob.type });
-        await sendAttachment(file, "audio");
-      };
-      mediaRecorderRef.current = recorder;
-      recorder.start();
-      setRecording(true);
-    } catch {
-      toast("Couldn't access your microphone", "error");
-    }
+  const onMicClick = async () => {
+    if (hasText) return;
+    await start();
   };
 
-  const stopRecording = () => {
-    mediaRecorderRef.current?.stop();
-    mediaRecorderRef.current = null;
-    setRecording(false);
+  const onStopAndSend = async () => {
+    setSending(true);
+    const result = await stop();
+    setSending(false);
+    if (!result) return;
+    await sendAttachment(result.file, "audio", { waveform: result.waveform, durationSec: result.durationSec });
   };
+
+  if (recording) {
+    return (
+      <div className="flex items-center gap-2 border-t border-border bg-surface p-3">
+        <button
+          type="button"
+          onClick={cancel}
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-text-secondary transition-colors hover:bg-danger/10 hover:text-danger"
+          aria-label="Cancel recording"
+          title="Cancel recording"
+        >
+          <Trash className="h-4 w-4" />
+        </button>
+        <div className="flex h-9 flex-1 items-center gap-2 rounded-full border border-danger/30 bg-background px-3">
+          <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-danger" />
+          <WaveformBars levels={liveBars} className="flex-1 text-danger" />
+          <span className="shrink-0 font-mono text-xs text-text-secondary">{formatElapsed(elapsedSec)}</span>
+        </div>
+        <button
+          type="button"
+          onClick={onStopAndSend}
+          disabled={sending}
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand text-white transition-opacity disabled:opacity-60"
+          aria-label="Stop and send voice note"
+          title="Stop and send"
+        >
+          <Stop className="h-4 w-4" />
+        </button>
+      </div>
+    );
+  }
 
   return (
     <form onSubmit={onSubmit} className="flex items-center gap-2 border-t border-border bg-surface p-3">
@@ -73,35 +98,34 @@ export function ChatComposer() {
       >
         <Image className="h-4 w-4" />
       </button>
-      <button
-        type="button"
-        onClick={recording ? stopRecording : startRecording}
-        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors ${
-          recording ? "bg-danger/10 text-danger" : "text-text-secondary hover:bg-surface-hover"
-        }`}
-        aria-label={recording ? "Stop recording" : "Record a voice note"}
-        title={recording ? "Stop recording" : "Record a voice note"}
-      >
-        {recording ? <Stop className="h-4 w-4" /> : <Microphone className="h-4 w-4" />}
-      </button>
       <input
         value={text}
         onChange={(e) => {
           setText(e.target.value);
           notifyTyping();
         }}
-        placeholder={recording ? "Recording…" : "Message"}
-        disabled={recording}
-        className="h-9 flex-1 rounded-full border border-border bg-background px-4 text-sm text-text-primary focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand disabled:opacity-60"
+        placeholder="Message"
+        className="h-9 flex-1 rounded-full border border-border bg-background px-4 text-sm text-text-primary focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
       />
-      <button
-        type="submit"
-        disabled={!text.trim()}
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand text-white transition-opacity disabled:opacity-40"
-        aria-label="Send"
-      >
-        <PaperPlaneTilt className="h-4 w-4" />
-      </button>
+      {hasText ? (
+        <button
+          type="submit"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand text-white"
+          aria-label="Send"
+        >
+          <PaperPlaneTilt className="h-4 w-4" />
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={onMicClick}
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-text-secondary transition-colors hover:bg-surface-hover"
+          aria-label="Record a voice note"
+          title="Record a voice note"
+        >
+          <Microphone className="h-4 w-4" />
+        </button>
+      )}
     </form>
   );
 }

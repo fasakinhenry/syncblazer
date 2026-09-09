@@ -94,7 +94,7 @@ interface RoomChatValue {
   loadMore: () => void;
   someoneTyping: boolean;
   sendText: (text: string, linkPreviewUrl?: string) => void;
-  sendAttachment: (file: File, type: "image" | "audio") => Promise<void>;
+  sendAttachment: (file: File, type: "image" | "audio", meta?: { waveform?: number[]; durationSec?: number }) => Promise<void>;
   notifyTyping: () => void;
   resolveAttachmentUrl: (payload: ChatPayload) => Promise<string | null>;
 }
@@ -451,7 +451,7 @@ export function RoomChatProvider({ roomId, children }: { roomId: string; childre
   );
 
   const sendAttachment = useCallback(
-    async (file: File, type: "image" | "audio") => {
+    async (file: File, type: "image" | "audio", meta?: { waveform?: number[]; durationSec?: number }) => {
       if (!socket || !user) return;
       const state = chatStateRef.current;
       const key = state.roomKeys.get(state.currentEpoch);
@@ -470,7 +470,7 @@ export function RoomChatProvider({ roomId, children }: { roomId: string; childre
           isMine: true,
           type,
           createdAt: new Date().toISOString(),
-          payload: { mimeType: file.type, fileName: file.name },
+          payload: { mimeType: file.type, fileName: file.name, waveform: meta?.waveform, durationSec: meta?.durationSec },
           pending: true,
         },
       ]);
@@ -484,6 +484,8 @@ export function RoomChatProvider({ roomId, children }: { roomId: string; childre
           attachmentIvB64: ivB64,
           mimeType: file.type,
           fileName: file.name,
+          waveform: meta?.waveform,
+          durationSec: meta?.durationSec,
         };
         const { ciphertext, iv } = await encryptMessage(key, payload);
         socket.emit("chat:message", { roomId, clientMsgId, ciphertext, iv, epoch: state.currentEpoch, type });
