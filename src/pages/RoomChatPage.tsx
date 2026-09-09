@@ -42,7 +42,7 @@ function ChatBody() {
         {messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 py-16 text-center text-text-secondary">
             <LockKey className="h-6 w-6" />
-            <p className="text-sm">No messages yet. Say hello — it's end-to-end encrypted.</p>
+            <p className="text-sm">No messages yet. Say hello, it's private and encrypted.</p>
           </div>
         ) : (
           <div className="flex flex-col gap-3">

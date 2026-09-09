@@ -71,9 +71,9 @@ export function RoomPage() {
           <WifiHigh className="h-5 w-5" />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="font-medium text-text-primary">Local transfer — send directly, skip the cloud</p>
+          <p className="font-medium text-text-primary">Local transfer: send directly, skip the cloud</p>
           <p className="text-sm text-text-secondary">
-            A quick code, a QR scan, or a desktop app — pick what fits, even with no one online.
+            A quick code, a QR scan, or a desktop app. Pick what fits, even with no one online.
           </p>
         </div>
         <ArrowRight className="h-5 w-5 shrink-0 text-brand" />

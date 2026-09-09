@@ -7,7 +7,7 @@ import { useTheme } from "@/context/ThemeContext.tsx";
 
 const LINKS = [
   { href: "#how-it-works", label: "How it works" },
-  { href: "#features", label: "Rooms and Notes" },
+  { href: "#features", label: "Features" },
   { href: "#local-first", label: "Local first" },
   { href: "#use-cases", label: "Who it's for" },
 ];

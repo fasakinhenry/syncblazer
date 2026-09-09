@@ -17,7 +17,8 @@ export function PrivacySection() {
           <p className="mx-auto mt-6 max-w-xl text-white/95">
             When SyncBlaze routes through the cloud instead, that traffic travels over an encrypted
             connection and stays visible only to your own devices. We don't read your files, your
-            notes, or your clipboard, and we never will.
+            notes, or your clipboard, and we never will. Room chat goes further: it's end-to-end
+            encrypted, so even our own servers can't read a single message.
           </p>
         </Reveal>
       </div>
