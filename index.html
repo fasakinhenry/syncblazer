@@ -12,6 +12,24 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="SyncBlaze" />
 
+    <!-- Static Open Graph / Twitter Card preview — deliberately not
+         per-page dynamic (that would need a server-rendering step or an
+         Edge Function, which costs money to run on every share/crawl);
+         one good branded image for every shared link is the zero-cost
+         tradeoff. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="SyncBlaze" />
+    <meta property="og:title" content="SyncBlaze — Your devices. One workspace." />
+    <meta property="og:description" content="A local-first cross-device workspace for moving files, notes, images and links seamlessly." />
+    <meta property="og:url" content="https://syncblazer.vercel.app/" />
+    <meta property="og:image" content="https://syncblazer.vercel.app/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="SyncBlaze — Your devices. One workspace." />
+    <meta name="twitter:description" content="A local-first cross-device workspace for moving files, notes, images and links seamlessly." />
+    <meta name="twitter:image" content="https://syncblazer.vercel.app/og-image.png" />
+
     <title>SyncBlaze</title>
   </head>
   <body>
