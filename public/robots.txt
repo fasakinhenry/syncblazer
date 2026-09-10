@@ -1,0 +1,26 @@
+User-agent: *
+Allow: /
+Allow: /login
+Allow: /register
+Allow: /downloads
+Allow: /n/
+Allow: /u/
+
+# Everything past this point requires a signed-in account, so there's
+# nothing for a crawler to index, only a login redirect. Keeping these
+# out of the crawl budget so search engines spend it on pages that
+# actually rank.
+Disallow: /room
+Disallow: /rooms/
+Disallow: /notes
+Disallow: /blaze
+Disallow: /devices
+Disallow: /transfers
+Disallow: /profile
+Disallow: /admin
+Disallow: /local-session
+Disallow: /local-transfer
+Disallow: /quick-connect
+Disallow: /lan-connect
+
+Sitemap: https://syncblazer.vercel.app/sitemap.xml
