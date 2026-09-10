@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button.tsx";
 import { Card } from "@/components/ui/Card.tsx";
 import { PageSpinner } from "@/components/ui/Spinner.tsx";
 import { InstallAppButton } from "@/components/InstallAppButton.tsx";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle.ts";
 
 function AssetLink({ label, asset }: { label: string; asset?: DesktopAsset }) {
   if (!asset) return null;
@@ -27,6 +28,10 @@ function AssetLink({ label, asset }: { label: string; asset?: DesktopAsset }) {
 }
 
 export function DownloadsPage() {
+  useDocumentTitle(
+    "Download SyncBlaze Desktop for Windows, Mac, and Linux",
+    "Download the free SyncBlaze desktop app for Windows, Mac, and Linux to pair with your phone over Wi-Fi in seconds."
+  );
   const { loading, relevant, label, url, release } = useDesktopDownload();
   const isMobile = detectDeviceInfo().type === "mobile" || detectDeviceInfo().type === "tablet";
 
@@ -45,7 +50,7 @@ export function DownloadsPage() {
         <div className="text-center">
           <h1 className="font-display text-3xl font-semibold text-text-primary">Download SyncBlaze Desktop</h1>
           <p className="mt-2 text-sm text-text-secondary">
-            A small companion app for Windows, Mac, and Linux — pairs with your phone over Wi-Fi with a single scan,
+            A small companion app for Windows, Mac, and Linux. Pairs with your phone over Wi-Fi with a single scan,
             no camera or internet required on the computer.
           </p>
         </div>
@@ -53,7 +58,7 @@ export function DownloadsPage() {
         {isMobile ? (
           <Card className="mt-8 flex flex-col items-center gap-3 p-6 text-center">
             <DeviceMobile className="h-8 w-8 text-brand" />
-            <p className="text-sm font-medium text-text-primary">You're on a phone — there's nothing to install here.</p>
+            <p className="text-sm font-medium text-text-primary">You're on a phone. There's nothing to install here.</p>
             <p className="text-sm text-text-secondary">
               SyncBlaze on mobile works straight from your browser. Install it to your home screen for the full
               app-like experience instead.
@@ -72,7 +77,7 @@ export function DownloadsPage() {
                 </Button>
               </a>
             ) : (
-              <p className="text-sm text-text-secondary">Couldn't check for the latest build right now — try the platform list below.</p>
+              <p className="text-sm text-text-secondary">Couldn't check for the latest build right now. Try the platform list below.</p>
             )}
             {release && (
               <a
@@ -127,7 +132,7 @@ export function DownloadsPage() {
         )}
 
         <p className="mt-10 text-center text-xs text-text-secondary">
-          Installers aren't code-signed yet — Windows/Mac may show an "unknown publisher" warning on first launch.
+          Installers aren't code-signed yet. Windows/Mac may show an "unknown publisher" warning on first launch.
           That's expected for now, not a sign anything's wrong.
         </p>
       </main>

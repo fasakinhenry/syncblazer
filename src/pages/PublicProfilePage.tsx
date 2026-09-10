@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/Badge.tsx";
 import { Button } from "@/components/ui/Button.tsx";
 import { EmptyState } from "@/components/ui/EmptyState.tsx";
 import { PageSpinner } from "@/components/ui/Spinner.tsx";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle.ts";
 
 type PublicProfile = { id: string; name: string; avatarUrl?: string; isGuest: boolean };
 
@@ -22,6 +23,11 @@ export function PublicProfilePage() {
       .then(({ user }) => setProfile(user))
       .catch((err) => setError(err instanceof ApiClientError ? err.message : "This profile isn't available."));
   }, [userId]);
+
+  useDocumentTitle(
+    profile ? `${profile.name} on SyncBlaze` : "Profile: SyncBlaze",
+    profile ? `${profile.name} is on SyncBlaze. Join them to sync files, notes, and chat across your devices.` : undefined
+  );
 
   return (
     <div className="min-h-dvh bg-background">
@@ -44,7 +50,7 @@ export function PublicProfilePage() {
             <Avatar name={profile.name} src={profile.avatarUrl} className="h-20 w-20 text-3xl" />
             <div>
               <div className="flex items-center justify-center gap-2">
-                <p className="text-lg font-semibold text-text-primary">{profile.name}</p>
+                <h1 className="text-lg font-semibold text-text-primary">{profile.name}</h1>
                 {profile.isGuest && <Badge tone="brand">Guest</Badge>}
               </div>
               <p className="mt-1 text-sm text-text-secondary">is on SyncBlaze</p>

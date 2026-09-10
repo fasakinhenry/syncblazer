@@ -8,8 +8,13 @@ import { GoogleSignInButton } from "@/components/GoogleSignInButton.tsx";
 import { ContinueAsGuestButton } from "@/components/ContinueAsGuestButton.tsx";
 import { useAuth } from "@/context/AuthContext.tsx";
 import { ApiClientError } from "@/lib/api.ts";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle.ts";
 
 export function LoginPage() {
+  useDocumentTitle(
+    "Log In to SyncBlaze",
+    "Sign in to SyncBlaze to sync files, notes, and chat across your devices."
+  );
   const { login } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");

@@ -12,6 +12,7 @@ import { EmptyState } from "@/components/ui/EmptyState.tsx";
 import { PageSpinner } from "@/components/ui/Spinner.tsx";
 import { formatRelativeTime } from "@/lib/format.ts";
 import { SharedNoteWorkspace } from "@/pages/SharedNoteWorkspace.tsx";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle.ts";
 
 /** The anonymous, read-only view of a publicly shared note. Editing a
  * shared note always requires being signed in — see SharedNoteWorkspace,
@@ -37,6 +38,11 @@ function AnonymousPublicNote({ token }: { token: string }) {
         setError(err instanceof ApiClientError ? err.message : "This note isn't available.");
       });
   }, [token]);
+
+  useDocumentTitle(
+    note ? `${note.title || "Untitled note"}: Shared on SyncBlaze` : "Shared Note: SyncBlaze",
+    owner ? `A note shared by ${owner.name} on SyncBlaze.` : undefined
+  );
 
   return (
     <main className="mx-auto max-w-2xl px-4 py-10">

@@ -9,8 +9,13 @@ import { ContinueAsGuestButton } from "@/components/ContinueAsGuestButton.tsx";
 import { ConfettiBurst } from "@/components/ConfettiBurst.tsx";
 import { useAuth } from "@/context/AuthContext.tsx";
 import { ApiClientError } from "@/lib/api.ts";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle.ts";
 
 export function RegisterPage() {
+  useDocumentTitle(
+    "Sign Up Free: SyncBlaze",
+    "Create a free SyncBlaze account and start moving files, notes, and chat between your devices in seconds."
+  );
   const { register } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
