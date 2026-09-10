@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { Link } from "react-router-dom";
-import { ArrowRight, Check, Monitor, Moon, ShareNetwork, SignOut, Sparkle, Sun, UploadSimple } from "@phosphor-icons/react";
+import { ArrowRight, Check, DownloadSimple, Monitor, Moon, ShareNetwork, SignOut, Sparkle, Sun, UploadSimple } from "@phosphor-icons/react";
 import { useAuth } from "@/context/AuthContext.tsx";
 import { useRooms } from "@/context/RoomContext.tsx";
 import { useTheme } from "@/context/ThemeContext.tsx";
@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/Button.tsx";
 import { Input } from "@/components/ui/Input.tsx";
 import { Badge } from "@/components/ui/Badge.tsx";
 import { InstallAppButton } from "@/components/InstallAppButton.tsx";
+import { useDesktopUpdateCheck } from "@/hooks/useDesktopUpdateCheck.ts";
 
 const canShare = typeof navigator !== "undefined" && "share" in navigator;
 
@@ -40,6 +41,7 @@ export function ProfilePage() {
   const [trendView, setTrendView] = useState<"transfers" | "notes">("transfers");
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
+  const desktopUpdate = useDesktopUpdateCheck();
 
   useEffect(() => {
     api.devices.list().then(({ devices }) => setDeviceCount(devices.length));
@@ -137,6 +139,29 @@ export function ProfilePage() {
             Upgrade
             <ArrowRight className="h-3.5 w-3.5" />
           </Button>
+        </Card>
+      )}
+
+      {desktopUpdate.applicable && desktopUpdate.updateAvailable && (
+        <Card className="flex items-center justify-between gap-3 border-brand/30 bg-brand-soft p-4">
+          <div className="flex items-center gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand text-white">
+              <DownloadSimple className="h-4 w-4" weight="bold" />
+            </span>
+            <div>
+              <p className="text-sm font-medium text-text-primary">A new desktop version is available</p>
+              <p className="text-xs text-text-secondary">
+                You're on {desktopUpdate.currentVersion}. {desktopUpdate.release?.version} is out with the latest
+                features and fixes.
+              </p>
+            </div>
+          </div>
+          <Link to="/downloads">
+            <Button size="sm" className="shrink-0 gap-1">
+              Update
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Button>
+          </Link>
         </Card>
       )}
 

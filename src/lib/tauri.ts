@@ -34,3 +34,12 @@ export async function startGoogleSignIn(clientId: string): Promise<string> {
   return invoke<string>("start_google_signin", { clientId });
 }
 
+/** The version baked into THIS installed build (from src-tauri/tauri.conf.json
+ * at the time it was compiled) — never what's newest on GitHub, that's a
+ * separate check against the releases API (see desktopReleases.ts). Only
+ * call after isTauri(). */
+export async function getAppVersion(): Promise<string> {
+  const { getVersion } = await import("@tauri-apps/api/app");
+  return getVersion();
+}
+

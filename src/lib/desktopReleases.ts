@@ -55,6 +55,19 @@ function parseRelease(release: GitHubRelease): DesktopReleaseInfo {
   };
 }
 
+/** Plain x.y.z comparison — good enough here since every SyncBlaze desktop
+ * release is a simple three-part version, no pre-release/build suffixes. */
+export function isNewerVersion(current: string, latest: string): boolean {
+  const clean = (v: string) => v.replace(/^v/i, "").split(".").map((n) => Number(n) || 0);
+  const a = clean(current);
+  const b = clean(latest);
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const diff = (b[i] ?? 0) - (a[i] ?? 0);
+    if (diff !== 0) return diff > 0;
+  }
+  return false;
+}
+
 export async function getDesktopReleaseInfo(): Promise<DesktopReleaseInfo | null> {
   try {
     const cached = sessionStorage.getItem(CACHE_KEY);
