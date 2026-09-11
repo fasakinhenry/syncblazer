@@ -110,7 +110,9 @@ export type ActivityType =
   | "note_deleted"
   | "device_connected"
   | "device_removed"
-  | "member_joined";
+  | "member_joined"
+  | "member_removed"
+  | "room_created";
 
 export interface Activity {
   _id: string;
@@ -120,6 +122,34 @@ export interface Activity {
   message: string;
   metadata?: Record<string, unknown>;
   createdAt: string;
+}
+
+export type NotificationCategory = "rooms" | "devices" | "notes";
+
+export type NotificationType =
+  | "member_joined"
+  | "member_removed"
+  | "device_joined"
+  | "note_shared"
+  | "note_updated"
+  | "note_deleted";
+
+export interface AppNotification {
+  _id: string;
+  userId: string;
+  actorId?: string;
+  actorName?: string;
+  actorAvatarUrl?: string;
+  type: NotificationType;
+  category: NotificationCategory;
+  message: string;
+  roomId?: string;
+  noteId?: string;
+  deviceId?: string;
+  metadata?: Record<string, unknown>;
+  readAt: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface UserPreferences {

@@ -6,6 +6,7 @@ import { ThemeProvider } from "@/context/ThemeContext.tsx";
 import { ToastProvider } from "@/context/ToastContext.tsx";
 import { SocketProvider } from "@/context/SocketContext.tsx";
 import { RoomProvider } from "@/context/RoomContext.tsx";
+import { NotificationProvider } from "@/context/NotificationContext.tsx";
 import { PeerTransferProvider } from "@/context/PeerTransferContext.tsx";
 import { LocalSessionProvider } from "@/context/LocalSessionContext.tsx";
 import { QuickPairProvider } from "@/context/QuickPairContext.tsx";
@@ -27,6 +28,7 @@ const RoomPage = lazy(() => import("@/pages/RoomPage.tsx").then((m) => ({ defaul
 const LocalSessionPage = lazy(() => import("@/pages/LocalSessionPage.tsx").then((m) => ({ default: m.LocalSessionPage })));
 const RoomDetailPage = lazy(() => import("@/pages/RoomDetailPage.tsx").then((m) => ({ default: m.RoomDetailPage })));
 const RoomChatPage = lazy(() => import("@/pages/RoomChatPage.tsx").then((m) => ({ default: m.RoomChatPage })));
+const ActivityPage = lazy(() => import("@/pages/ActivityPage.tsx").then((m) => ({ default: m.ActivityPage })));
 const NotesPage = lazy(() => import("@/pages/NotesPage.tsx").then((m) => ({ default: m.NotesPage })));
 const QuickBlazePage = lazy(() => import("@/pages/QuickBlazePage.tsx").then((m) => ({ default: m.QuickBlazePage })));
 const DevicesPage = lazy(() => import("@/pages/DevicesPage.tsx").then((m) => ({ default: m.DevicesPage })));
@@ -48,6 +50,7 @@ export default function App() {
           <AuthProvider>
             <SocketProvider>
               <RoomProvider>
+                <NotificationProvider>
                 <PeerTransferProvider>
                   <LocalSessionProvider>
                   <QuickPairProvider>
@@ -121,6 +124,14 @@ export default function App() {
                           }
                         />
                         <Route
+                          path="/activity"
+                          element={
+                            <Suspense fallback={<PageSpinner />}>
+                              <ActivityPage />
+                            </Suspense>
+                          }
+                        />
+                        <Route
                           path="/notes"
                           element={
                             <Suspense fallback={<PageSpinner />}>
@@ -186,6 +197,7 @@ export default function App() {
                   </QuickPairProvider>
                   </LocalSessionProvider>
                 </PeerTransferProvider>
+                </NotificationProvider>
               </RoomProvider>
             </SocketProvider>
           </AuthProvider>

@@ -3,6 +3,7 @@ import { useNavigate, Link } from "react-router-dom";
 import { File as FileIcon, Fire, Plus, SignIn, Note as NoteIcon, WifiHigh, ArrowRight } from "@phosphor-icons/react";
 import { useAuth } from "@/context/AuthContext.tsx";
 import { useRooms } from "@/context/RoomContext.tsx";
+import { useNotifications } from "@/context/NotificationContext.tsx";
 import { useToast } from "@/context/ToastContext.tsx";
 import { api, ApiClientError } from "@/lib/api.ts";
 import { takePendingRoomJoin } from "@/lib/pendingRoomJoin.ts";
@@ -25,6 +26,7 @@ function greeting(): string {
 export function RoomPage() {
   const { user } = useAuth();
   const { rooms, loading, refresh } = useRooms();
+  const { unreadByRoom, chatUnread } = useNotifications();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [createOpen, setCreateOpen] = useState(false);
@@ -125,7 +127,11 @@ export function RoomPage() {
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {rooms.map((room) => (
-            <RoomCard key={room._id} room={room} />
+            <RoomCard
+              key={room._id}
+              room={room}
+              unreadCount={(unreadByRoom.get(room._id) ?? 0) + (chatUnread.get(room._id)?.count ?? 0)}
+            />
           ))}
         </div>
       </section>

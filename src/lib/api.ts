@@ -3,6 +3,7 @@ import type {
   AdminOverview,
   AdminUser,
   AdminUserDetail,
+  AppNotification,
   AuthProvider,
   ChatMessageDto,
   Device,
@@ -10,6 +11,7 @@ import type {
   Note,
   NoteAccessLevel,
   NoteVisibility,
+  NotificationCategory,
   PublicNote,
   Room,
   RoomMember,
@@ -299,6 +301,23 @@ export const api = {
       if (!res.ok) throw new ApiClientError(res.status, "Couldn't download this attachment");
       return res.blob();
     },
+  },
+
+  notifications: {
+    list: (params?: { category?: NotificationCategory; before?: string }) => {
+      const query = new URLSearchParams(params as Record<string, string>).toString();
+      return apiFetch<{ notifications: AppNotification[]; nextCursor: string | null }>(
+        `/notifications${query ? `?${query}` : ""}`
+      );
+    },
+    unreadCount: () => apiFetch<{ count: number }>("/notifications/unread-count"),
+    markRead: (id: string) => apiFetch<{ id: string }>(`/notifications/${id}/read`, { method: "POST" }),
+    markAllRead: () => apiFetch<{ marked: boolean }>("/notifications/read-all", { method: "POST" }),
+    getVapidPublicKey: () => apiFetch<{ publicKey: string | null }>("/notifications/vapid-public-key"),
+    registerPushSubscription: (sub: { endpoint: string; keys: { p256dh: string; auth: string }; deviceId?: string }) =>
+      apiFetch<{ id: string }>("/notifications/push-subscriptions", { method: "POST", body: sub }),
+    unregisterPushSubscription: (endpoint: string) =>
+      apiFetch<{ removed: boolean }>("/notifications/push-subscriptions", { method: "DELETE", body: { endpoint } }),
   },
 
   linkPreview: {

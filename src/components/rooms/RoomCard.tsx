@@ -10,7 +10,7 @@ const TYPE_LABEL: Record<Room["type"], string> = {
   shared: "Shared",
 };
 
-export function RoomCard({ room }: { room: Room }) {
+export function RoomCard({ room, unreadCount = 0 }: { room: Room; unreadCount?: number }) {
   const deviceCount = Array.isArray(room.deviceIds) ? room.deviceIds.length : 0;
   const onlineCount = (room.deviceIds as Device[]).filter?.((d) => d?.status === "online").length ?? 0;
 
@@ -20,8 +20,13 @@ export function RoomCard({ room }: { room: Room }) {
       className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-5 transition-colors hover:border-brand/40"
     >
       <div className="flex items-start justify-between">
-        <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-soft text-brand">
+        <span className="relative flex h-10 w-10 items-center justify-center rounded-lg bg-brand-soft text-brand">
           {room.isDefault ? <House className="h-5 w-5" /> : <Fire className="h-5 w-5" />}
+          {unreadCount > 0 && (
+            <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-surface bg-danger px-1 text-[10px] font-semibold text-white">
+              {unreadCount > 9 ? "9+" : unreadCount}
+            </span>
+          )}
         </span>
         <Badge tone={room.isDefault ? "brand" : "neutral"}>{TYPE_LABEL[room.type]}</Badge>
       </div>

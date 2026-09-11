@@ -4,6 +4,7 @@ import { ArrowLeft, LockKey } from "@phosphor-icons/react";
 import { api } from "@/lib/api.ts";
 import type { Room, RoomMember } from "@/lib/types.ts";
 import { RoomChatProvider, useRoomChat } from "@/context/RoomChatContext.tsx";
+import { useNotifications } from "@/context/NotificationContext.tsx";
 import { ChatMessageBubble } from "@/components/chat/ChatMessageBubble.tsx";
 import { ChatComposer } from "@/components/chat/ChatComposer.tsx";
 import { PageSpinner } from "@/components/ui/Spinner.tsx";
@@ -65,6 +66,7 @@ export function RoomChatPage() {
   const navigate = useNavigate();
   const [room, setRoom] = useState<Room | null>(null);
   const [members, setMembers] = useState<RoomMember[]>([]);
+  const { clearRoomChatUnread } = useNotifications();
 
   useEffect(() => {
     if (!roomId) return;
@@ -73,6 +75,13 @@ export function RoomChatPage() {
       setMembers(members);
     });
   }, [roomId]);
+
+  // Opening chat counts as reading it — clears this room's badge on the
+  // Room page / Activity page, same as RoomChatContext's own local
+  // chatReadState.markRead(...) already does for RoomDetailPage's badge.
+  useEffect(() => {
+    if (roomId) clearRoomChatUnread(roomId);
+  }, [roomId, clearRoomChatUnread]);
 
   if (!roomId) return null;
 

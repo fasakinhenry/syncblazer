@@ -1,13 +1,15 @@
 import { NavLink } from "react-router-dom";
-import { ShieldCheck } from "@phosphor-icons/react";
+import { Bell, ShieldCheck } from "@phosphor-icons/react";
 import { NAV_ITEMS } from "@/components/layout/nav.ts";
 import { InstallAppButton } from "@/components/InstallAppButton.tsx";
 import { Logo } from "@/components/Logo.tsx";
 import { isAdminEmail } from "@/components/ProtectedRoute.tsx";
 import { useAuth } from "@/context/AuthContext.tsx";
+import { useNotifications } from "@/context/NotificationContext.tsx";
 
 export function Sidebar() {
   const { user } = useAuth();
+  const { unreadCount } = useNotifications();
 
   return (
     <aside className="hidden w-60 shrink-0 flex-col border-r border-border bg-surface md:flex">
@@ -39,6 +41,26 @@ export function Sidebar() {
             )}
           </NavLink>
         ))}
+        <NavLink
+          to="/activity"
+          className={({ isActive }) =>
+            `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+              isActive ? "bg-brand-soft text-brand" : "text-text-secondary hover:bg-surface-hover hover:text-text-primary"
+            }`
+          }
+        >
+          {({ isActive }) => (
+            <>
+              <Bell className="h-5 w-5" weight={isActive ? "fill" : "regular"} />
+              Activity
+              {unreadCount > 0 && (
+                <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-semibold text-white">
+                  {unreadCount > 9 ? "9+" : unreadCount}
+                </span>
+              )}
+            </>
+          )}
+        </NavLink>
         {isAdminEmail(user?.email) && (
           <NavLink
             to="/admin"

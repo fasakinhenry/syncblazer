@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/Button.tsx";
 import { Input } from "@/components/ui/Input.tsx";
 import { Badge } from "@/components/ui/Badge.tsx";
 import { InstallAppButton } from "@/components/InstallAppButton.tsx";
+import { NotificationPermissionCard } from "@/components/NotificationPermissionCard.tsx";
 import { useDesktopUpdateCheck } from "@/hooks/useDesktopUpdateCheck.ts";
 
 const canShare = typeof navigator !== "undefined" && "share" in navigator;
@@ -164,6 +165,8 @@ export function ProfilePage() {
           </Link>
         </Card>
       )}
+
+      <NotificationPermissionCard />
 
       <div className="grid grid-cols-2 gap-3">
         <Card className="flex flex-col items-center gap-1 p-4">

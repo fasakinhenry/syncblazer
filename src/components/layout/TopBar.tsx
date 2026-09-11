@@ -1,9 +1,10 @@
 import { Link } from "react-router-dom";
-import { CircleHalf, Moon, Sun, WifiSlash } from "@phosphor-icons/react";
+import { Bell, CircleHalf, Moon, Sun, WifiSlash } from "@phosphor-icons/react";
 import { useAuth } from "@/context/AuthContext.tsx";
 import { useSocket } from "@/context/SocketContext.tsx";
 import { useTheme } from "@/context/ThemeContext.tsx";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus.ts";
+import { useNotifications } from "@/context/NotificationContext.tsx";
 import { Avatar } from "@/components/Avatar.tsx";
 
 const THEME_CYCLE = ["light", "dark", "system"] as const;
@@ -14,6 +15,7 @@ export function TopBar() {
   const { connected } = useSocket();
   const online = useOnlineStatus();
   const { theme, setTheme } = useTheme();
+  const { unreadCount } = useNotifications();
   const ThemeIcon = THEME_ICON[theme];
 
   const cycleTheme = () => {
@@ -38,6 +40,19 @@ export function TopBar() {
       </div>
 
       <div className="flex items-center gap-3">
+        <Link
+          to="/activity"
+          aria-label="Activity"
+          title="Activity"
+          className="relative rounded-lg p-2 text-text-secondary hover:bg-surface-hover hover:text-text-primary"
+        >
+          <Bell className="h-5 w-5" />
+          {unreadCount > 0 && (
+            <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full border-2 border-surface bg-danger px-1 text-[9px] font-semibold text-white">
+              {unreadCount > 9 ? "9+" : unreadCount}
+            </span>
+          )}
+        </Link>
         <button
           onClick={cycleTheme}
           aria-label={`Theme: ${theme}`}
