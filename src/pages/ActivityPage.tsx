@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bell, ChatCircleDots, DeviceMobile, Note as NoteIcon, UsersThree } from "@phosphor-icons/react";
+import { Bell, ChatCircleDots, DeviceMobile, Files, Heart, Note as NoteIcon, UsersThree } from "@phosphor-icons/react";
 import { useNotifications } from "@/context/NotificationContext.tsx";
 import { useRooms } from "@/context/RoomContext.tsx";
 import { Avatar } from "@/components/Avatar.tsx";
@@ -17,6 +17,7 @@ const PILLS: { value: Pill; label: string }[] = [
   { value: "rooms", label: "Rooms" },
   { value: "devices", label: "Devices" },
   { value: "notes", label: "Notes" },
+  { value: "files", label: "Files" },
   { value: "chat", label: "Chat" },
 ];
 
@@ -27,6 +28,8 @@ const TYPE_ICON: Record<NotificationType, typeof Bell> = {
   note_shared: NoteIcon,
   note_updated: NoteIcon,
   note_deleted: NoteIcon,
+  file_shared: Files,
+  file_liked: Heart,
 };
 
 interface ChatRow {

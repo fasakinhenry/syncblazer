@@ -17,7 +17,7 @@ export interface Device {
   updatedAt: string;
 }
 
-export type RoomType = "personal" | "project" | "temporary" | "shared";
+export type RoomType = "personal" | "project" | "temporary" | "shared" | "public";
 
 export interface Room {
   _id: string;
@@ -38,6 +38,47 @@ export interface RoomMember {
   _id: string;
   name: string;
   avatarUrl?: string;
+}
+
+export interface RoomMemberDevice {
+  _id: string;
+  name: string;
+  type: DeviceType;
+  platform: DevicePlatform;
+  status: DeviceStatus;
+  lastSeenAt: string;
+}
+
+export interface RoomMemberWithDevices {
+  _id: string;
+  name: string;
+  avatarUrl?: string;
+  online: boolean;
+  lastSeenAt: string | null;
+  devices: RoomMemberDevice[];
+}
+
+export type RoomFileVisibility = "room" | "private";
+
+export interface RoomFile {
+  _id: string;
+  roomId: string;
+  senderId: string;
+  senderName: string;
+  senderAvatarUrl?: string;
+  senderDeviceId: string;
+  name: string;
+  size: number;
+  mimeType?: string;
+  batchId?: string;
+  visibility: RoomFileVisibility;
+  recipientId?: string;
+  likeCount: number;
+  likedByMe: boolean;
+  downloadedByMe: boolean;
+  downloadCount: number;
+  viewCount: number;
+  createdAt: string;
 }
 
 export type NoteVisibility = "private" | "room";
@@ -124,7 +165,7 @@ export interface Activity {
   createdAt: string;
 }
 
-export type NotificationCategory = "rooms" | "devices" | "notes";
+export type NotificationCategory = "rooms" | "devices" | "notes" | "files";
 
 export type NotificationType =
   | "member_joined"
@@ -132,7 +173,9 @@ export type NotificationType =
   | "device_joined"
   | "note_shared"
   | "note_updated"
-  | "note_deleted";
+  | "note_deleted"
+  | "file_shared"
+  | "file_liked";
 
 export interface AppNotification {
   _id: string;

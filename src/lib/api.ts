@@ -14,7 +14,9 @@ import type {
   NotificationCategory,
   PublicNote,
   Room,
+  RoomFile,
   RoomMember,
+  RoomMemberWithDevices,
   Transfer,
   TrendPoint,
   User,
@@ -190,6 +192,59 @@ export const api = {
     removeMember: (roomId: string, userId: string) =>
       apiFetch<{ roomId: string; userId: string }>(`/rooms/${roomId}/members/${userId}`, { method: "DELETE" }),
     leave: (roomId: string) => apiFetch<{ roomId: string }>(`/rooms/${roomId}/leave`, { method: "POST" }),
+    getMembersWithDevices: (roomId: string) =>
+      apiFetch<{ members: RoomMemberWithDevices[] }>(`/rooms/${roomId}/members-with-devices`),
+  },
+
+  roomFiles: {
+    list: (roomId: string, before?: string) =>
+      apiFetch<{ files: RoomFile[]; nextCursor: string | null }>(
+        `/room-files/${roomId}${before ? `?before=${encodeURIComponent(before)}` : ""}`
+      ),
+    /** target omitted -> shared with the whole room. `deliverTo: "device"`
+     * pings just that one device live; `"user"` pings every device the
+     * recipient is signed into — either way the file is visible to that
+     * person from anywhere, only the live notification target differs. */
+    upload: (
+      roomId: string,
+      files: File[],
+      target?: { recipientId: string; deliverTo: "device" | "user"; deviceId?: string }
+    ) => {
+      const formData = new FormData();
+      files.forEach((file) => formData.append("files", file));
+      if (target) {
+        formData.append("recipientId", target.recipientId);
+        formData.append("deliverTo", target.deliverTo);
+        if (target.deviceId) formData.append("deviceId", target.deviceId);
+      }
+      return apiFetch<{ files: RoomFile[] }>(`/room-files/${roomId}`, { method: "POST", body: formData });
+    },
+    downloadUrl: (roomId: string, fileId: string) => `${API_URL}/room-files/${roomId}/${fileId}/download`,
+    download: async (roomId: string, fileId: string): Promise<Blob> => {
+      const token = tokenStore.getAccessToken();
+      const res = await fetch(`${API_URL}/room-files/${roomId}/${fileId}/download`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      if (!res.ok) throw new ApiClientError(res.status, "Couldn't download this file");
+      return res.blob();
+    },
+    /** Same bytes as download, but never marks the file as downloaded —
+     * for thumbnails/lightbox previews, so looking at a file in the list
+     * doesn't silently flip its CTA to "Redownload". */
+    preview: async (roomId: string, fileId: string): Promise<Blob> => {
+      const token = tokenStore.getAccessToken();
+      const res = await fetch(`${API_URL}/room-files/${roomId}/${fileId}/preview`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      if (!res.ok) throw new ApiClientError(res.status, "Couldn't load this preview");
+      return res.blob();
+    },
+    like: (roomId: string, fileId: string) =>
+      apiFetch<{ likeCount: number }>(`/room-files/${roomId}/${fileId}/like`, { method: "POST" }),
+    unlike: (roomId: string, fileId: string) =>
+      apiFetch<{ likeCount: number }>(`/room-files/${roomId}/${fileId}/like`, { method: "DELETE" }),
+    view: (roomId: string, fileId: string) =>
+      apiFetch<{ viewCount: number }>(`/room-files/${roomId}/${fileId}/view`, { method: "POST" }),
   },
 
   devices: {

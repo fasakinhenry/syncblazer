@@ -23,12 +23,13 @@ import { DownloadsPage } from "@/pages/DownloadsPage.tsx";
 import { LoginPage } from "@/pages/auth/LoginPage.tsx";
 import { RegisterPage } from "@/pages/auth/RegisterPage.tsx";
 import { NotFoundPage } from "@/pages/NotFoundPage.tsx";
+import { RoomEntryPage } from "@/pages/RoomEntryPage.tsx";
 
 const RoomPage = lazy(() => import("@/pages/RoomPage.tsx").then((m) => ({ default: m.RoomPage })));
 const LocalSessionPage = lazy(() => import("@/pages/LocalSessionPage.tsx").then((m) => ({ default: m.LocalSessionPage })));
-const RoomDetailPage = lazy(() => import("@/pages/RoomDetailPage.tsx").then((m) => ({ default: m.RoomDetailPage })));
 const RoomChatPage = lazy(() => import("@/pages/RoomChatPage.tsx").then((m) => ({ default: m.RoomChatPage })));
 const ActivityPage = lazy(() => import("@/pages/ActivityPage.tsx").then((m) => ({ default: m.ActivityPage })));
+const FilesPage = lazy(() => import("@/pages/FilesPage.tsx").then((m) => ({ default: m.FilesPage })));
 const NotesPage = lazy(() => import("@/pages/NotesPage.tsx").then((m) => ({ default: m.NotesPage })));
 const QuickBlazePage = lazy(() => import("@/pages/QuickBlazePage.tsx").then((m) => ({ default: m.QuickBlazePage })));
 const DevicesPage = lazy(() => import("@/pages/DevicesPage.tsx").then((m) => ({ default: m.DevicesPage })));
@@ -109,17 +110,21 @@ export default function App() {
                         />
                         <Route
                           path="/rooms/:roomId"
-                          element={
-                            <Suspense fallback={<PageSpinner />}>
-                              <RoomDetailPage />
-                            </Suspense>
-                          }
+                          element={<RoomEntryPage />}
                         />
                         <Route
                           path="/rooms/:roomId/chat"
                           element={
                             <Suspense fallback={<PageSpinner />}>
                               <RoomChatPage />
+                            </Suspense>
+                          }
+                        />
+                        <Route
+                          path="/rooms/:roomId/files"
+                          element={
+                            <Suspense fallback={<PageSpinner />}>
+                              <FilesPage />
                             </Suspense>
                           }
                         />

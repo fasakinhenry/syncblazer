@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { House, Fire, Users } from "@phosphor-icons/react";
+import { House, Fire, Globe, Users } from "@phosphor-icons/react";
 import type { Device, Room } from "@/lib/types.ts";
 import { Badge } from "@/components/ui/Badge.tsx";
 
@@ -8,27 +8,31 @@ const TYPE_LABEL: Record<Room["type"], string> = {
   project: "Project",
   temporary: "Instant",
   shared: "Shared",
+  public: "Public",
 };
 
 export function RoomCard({ room, unreadCount = 0 }: { room: Room; unreadCount?: number }) {
   const deviceCount = Array.isArray(room.deviceIds) ? room.deviceIds.length : 0;
   const onlineCount = (room.deviceIds as Device[]).filter?.((d) => d?.status === "online").length ?? 0;
+  const isPublic = room.type === "public";
 
   return (
     <Link
       to={`/rooms/${room._id}`}
-      className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-5 transition-colors hover:border-brand/40"
+      className={`flex flex-col gap-3 rounded-xl border bg-surface p-5 transition-colors hover:border-brand/40 ${
+        isPublic ? "border-brand/30" : "border-border"
+      }`}
     >
       <div className="flex items-start justify-between">
         <span className="relative flex h-10 w-10 items-center justify-center rounded-lg bg-brand-soft text-brand">
-          {room.isDefault ? <House className="h-5 w-5" /> : <Fire className="h-5 w-5" />}
+          {room.isDefault ? <House className="h-5 w-5" /> : isPublic ? <Globe className="h-5 w-5" /> : <Fire className="h-5 w-5" />}
           {unreadCount > 0 && (
             <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-surface bg-danger px-1 text-[10px] font-semibold text-white">
               {unreadCount > 9 ? "9+" : unreadCount}
             </span>
           )}
         </span>
-        <Badge tone={room.isDefault ? "brand" : "neutral"}>{TYPE_LABEL[room.type]}</Badge>
+        <Badge tone={room.isDefault || isPublic ? "brand" : "neutral"}>{TYPE_LABEL[room.type]}</Badge>
       </div>
       <div>
         <p className="truncate font-medium text-text-primary">{room.name}</p>
