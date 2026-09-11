@@ -6,6 +6,7 @@ import { FeaturesSection } from "@/components/landing/FeaturesSection.tsx";
 import { LocalFirstSection } from "@/components/landing/LocalFirstSection.tsx";
 import { PrivacySection } from "@/components/landing/PrivacySection.tsx";
 import { UseCasesSection } from "@/components/landing/UseCasesSection.tsx";
+import { FaqSection } from "@/components/landing/FaqSection.tsx";
 import { FinalCTASection } from "@/components/landing/FinalCTASection.tsx";
 import { LandingFooter } from "@/components/landing/LandingFooter.tsx";
 
@@ -21,6 +22,7 @@ export function LandingPage() {
         <LocalFirstSection />
         <PrivacySection />
         <UseCasesSection />
+        <FaqSection />
         <FinalCTASection />
       </main>
       <LandingFooter />

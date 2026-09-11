@@ -18,9 +18,9 @@ export function LocalFirstSection() {
             </Reveal>
             <Reveal delay={0.1}>
               <p className="mt-6 max-w-md text-base leading-relaxed text-text-secondary">
-                When your phone and laptop are on the same network, SyncBlaze sends things directly
-                between them. Nothing passes through our servers. When they're apart, it can route
-                through the cloud instead. You never have to choose which. SyncBlaze does.
+                On the same Wi-Fi, your phone and laptop talk straight to each other, no server in
+                between. Apart, SyncBlaze quietly falls back to the cloud instead. You don't pick
+                which one happens. It just works either way.
               </p>
             </Reveal>
 
@@ -36,7 +36,7 @@ export function LocalFirstSection() {
                 </div>
                 <div className="flex gap-4">
                   <dt className="w-28 shrink-0 font-display text-sm text-brand">You</dt>
-                  <dd className="text-sm text-text-secondary">See none of that complexity. Just pick a device and send.</dd>
+                  <dd className="text-sm text-text-secondary">Just pick a device and send. That's the whole decision.</dd>
                 </div>
               </dl>
             </Reveal>

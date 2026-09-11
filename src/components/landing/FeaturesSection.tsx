@@ -6,38 +6,32 @@ const FEATURES = [
   {
     icon: House,
     title: "Rooms",
-    description:
-      "A shared space for your own devices, or a project with other people. Invite someone by email, see who's in it, and what happened recently.",
+    description: "A space you share with your own devices, or with other people you invite by email.",
   },
   {
     icon: Note,
     title: "Notes",
-    description:
-      "Fast notes that sync across every device in real time. Add images, drop in links with previews, and write together with people in your room.",
+    description: "Quick notes that update on every device the second you type, no saving needed.",
   },
   {
     icon: ChatCircleDots,
     title: "Room chat",
-    description:
-      "A private, end-to-end encrypted chat for each room. Text, photos, and voice notes that only your room can read. Not even we can see them.",
+    description: "A private chat per room, encrypted so only the people in it can ever read it.",
   },
   {
     icon: Fire,
     title: "Quick Blaze",
-    description:
-      "The fastest path from one device to another. Pick the content, pick the destination, send it.",
+    description: "The fastest way to send something: pick it, pick where it goes, done.",
   },
   {
     icon: DeviceMobile,
     title: "Devices",
-    description:
-      "Every device you've paired, with clear status. Rename them, remove them, or pair a new one in seconds.",
+    description: "Every device you've connected, in one list. Rename or remove any of them anytime.",
   },
   {
     icon: UsersThree,
     title: "Guest access",
-    description:
-      "Try SyncBlaze with one tap, no account needed. Upgrade to a real account later without losing anything you've saved.",
+    description: "Try it with one tap, no account needed. Save an account for later if you like it.",
   },
 ];
 
@@ -50,16 +44,20 @@ export function FeaturesSection() {
         </Reveal>
         <Reveal delay={0.05}>
           <h2 className="max-w-xl font-display text-3xl font-medium leading-tight text-text-primary sm:text-4xl">
-            Everything you need, none of the extra weight.
+            Six simple pieces. Nothing to configure.
           </h2>
         </Reveal>
 
-        <div className="mt-16 grid divide-y divide-border border-t border-border sm:grid-cols-2 sm:divide-x sm:divide-y-0 lg:grid-cols-3">
+        <div className="mt-16 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {FEATURES.map((feature, i) => (
-            <Reveal key={feature.title} delay={i * 0.06} className="px-1 py-8 sm:px-6 sm:py-10">
-              <feature.icon className="h-6 w-6 text-brand" />
-              <h3 className="mt-5 font-display text-xl font-medium text-text-primary">{feature.title}</h3>
-              <p className="mt-3 text-sm leading-relaxed text-text-secondary">{feature.description}</p>
+            <Reveal key={feature.title} delay={i * 0.06}>
+              <div className="h-full rounded-2xl border border-border p-6 transition-colors hover:border-brand/40">
+                <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-soft text-brand">
+                  <feature.icon className="h-5 w-5" />
+                </span>
+                <h3 className="mt-4 font-display text-lg font-medium text-text-primary">{feature.title}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-text-secondary">{feature.description}</p>
+              </div>
             </Reveal>
           ))}
         </div>

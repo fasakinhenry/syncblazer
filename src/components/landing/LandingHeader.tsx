@@ -8,8 +8,8 @@ import { useTheme } from "@/context/ThemeContext.tsx";
 const LINKS = [
   { href: "#how-it-works", label: "How it works" },
   { href: "#features", label: "Features" },
-  { href: "#local-first", label: "Local first" },
-  { href: "#use-cases", label: "Who it's for" },
+  { href: "#local-first", label: "No cloud needed" },
+  { href: "#faq", label: "FAQ" },
 ];
 
 export function LandingHeader() {
