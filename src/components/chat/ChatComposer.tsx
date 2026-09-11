@@ -1,5 +1,5 @@
-import { useRef, useState, type ChangeEvent, type FormEvent } from "react";
-import { Image, Microphone, PaperPlaneTilt, Stop, Trash } from "@phosphor-icons/react";
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { Image, Microphone, PaperPlaneTilt, PencilSimple, Stop, Trash, X } from "@phosphor-icons/react";
 import { useToast } from "@/context/ToastContext.tsx";
 import { useRoomChat } from "@/context/RoomChatContext.tsx";
 import { extractUrls } from "@/lib/linkPreviewCache.ts";
@@ -13,7 +13,7 @@ function formatElapsed(sec: number): string {
 }
 
 export function ChatComposer() {
-  const { sendText, sendAttachment, notifyTyping } = useRoomChat();
+  const { sendText, sendAttachment, editMessage, editingTarget, cancelEditing, notifyTyping } = useRoomChat();
   const { toast } = useToast();
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
@@ -22,10 +22,20 @@ export function ChatComposer() {
 
   const hasText = text.trim().length > 0;
 
+  useEffect(() => {
+    if (editingTarget) setText(editingTarget.text);
+  }, [editingTarget]);
+
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
     const trimmed = text.trim();
     if (!trimmed) return;
+    if (editingTarget) {
+      editMessage(editingTarget.id, trimmed);
+      cancelEditing();
+      setText("");
+      return;
+    }
     const [firstUrl] = extractUrls(trimmed);
     sendText(trimmed, firstUrl);
     setText("");
@@ -87,45 +97,66 @@ export function ChatComposer() {
   }
 
   return (
-    <form onSubmit={onSubmit} className="flex items-center gap-2 border-t border-border bg-surface p-3">
-      <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={onPickImage} />
-      <button
-        type="button"
-        onClick={() => imageInputRef.current?.click()}
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-text-secondary transition-colors hover:bg-surface-hover"
-        aria-label="Attach image"
-        title="Attach image"
-      >
-        <Image className="h-4 w-4" />
-      </button>
-      <input
-        value={text}
-        onChange={(e) => {
-          setText(e.target.value);
-          notifyTyping();
-        }}
-        placeholder="Message"
-        className="h-9 flex-1 rounded-full border border-border bg-background px-4 text-sm text-text-primary focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
-      />
-      {hasText ? (
-        <button
-          type="submit"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand text-white"
-          aria-label="Send"
-        >
-          <PaperPlaneTilt className="h-4 w-4" />
-        </button>
-      ) : (
-        <button
-          type="button"
-          onClick={onMicClick}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-text-secondary transition-colors hover:bg-surface-hover"
-          aria-label="Record a voice note"
-          title="Record a voice note"
-        >
-          <Microphone className="h-4 w-4" />
-        </button>
+    <div className="border-t border-border bg-surface">
+      {editingTarget && (
+        <div className="flex items-center gap-2 border-b border-border bg-brand-soft px-3 py-1.5 text-xs text-brand">
+          <PencilSimple className="h-3.5 w-3.5 shrink-0" />
+          <span className="flex-1">Editing message</span>
+          <button
+            type="button"
+            onClick={() => {
+              cancelEditing();
+              setText("");
+            }}
+            aria-label="Cancel edit"
+            className="rounded p-0.5 hover:bg-brand/10"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
       )}
-    </form>
+      <form onSubmit={onSubmit} className="flex items-center gap-2 p-3">
+        <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={onPickImage} />
+        {!editingTarget && (
+          <button
+            type="button"
+            onClick={() => imageInputRef.current?.click()}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-text-secondary transition-colors hover:bg-surface-hover"
+            aria-label="Attach image"
+            title="Attach image"
+          >
+            <Image className="h-4 w-4" />
+          </button>
+        )}
+        <input
+          value={text}
+          onChange={(e) => {
+            setText(e.target.value);
+            notifyTyping();
+          }}
+          placeholder={editingTarget ? "Edit message" : "Message"}
+          className="h-9 flex-1 rounded-full border border-border bg-background px-4 text-sm text-text-primary focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
+        />
+        {hasText ? (
+          <button
+            type="submit"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand text-white"
+            aria-label={editingTarget ? "Save edit" : "Send"}
+          >
+            <PaperPlaneTilt className="h-4 w-4" />
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={onMicClick}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-text-secondary transition-colors hover:bg-surface-hover"
+            aria-label="Record a voice note"
+            title="Record a voice note"
+          >
+            <Microphone className="h-4 w-4" />
+          </button>
+        )}
+      </form>
+    </div>
   );
 }

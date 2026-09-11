@@ -145,6 +145,16 @@ export interface ChatPayload {
    * itself, and the fact a preview was fetched, never touch the server in
    * association with this message. */
   linkPreviewUrl?: string;
+  /** Marks this message as a replacement for an earlier one — the message
+   * list collapses the original in place, tagged "(edited)". Sent as a
+   * normal new encrypted message like any other; the id it targets is a
+   * plaintext ChatMessageDto._id (ids aren't secret, only content is). */
+  editsMessageId?: string;
+  /** Marks this message as a tombstone for an earlier one — the message
+   * list replaces the original with a "Message deleted" placeholder. Hides
+   * the original from every client that sees this tombstone; it doesn't
+   * erase the original ciphertext row from the database. */
+  deletesMessageId?: string;
 }
 
 export async function encryptMessage(roomKey: CryptoKey, payload: ChatPayload): Promise<{ ciphertext: string; iv: string }> {

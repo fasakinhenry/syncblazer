@@ -85,6 +85,12 @@ export interface ChatMessage {
    * yet) — the UI shows a lock/placeholder rather than blocking. */
   payload: ChatPayload | null;
   pending?: boolean;
+  /** True once a later message has stamped this one with editsMessageId —
+   * `payload` above is already the edited content by the time this is set. */
+  edited?: boolean;
+  /** True once a later message has stamped this one with deletesMessageId —
+   * `payload` is nulled out; the bubble renders a "Message deleted" placeholder. */
+  deleted?: boolean;
 }
 
 interface RoomChatValue {
@@ -97,6 +103,15 @@ interface RoomChatValue {
   typingNames: string[];
   sendText: (text: string, linkPreviewUrl?: string) => void;
   sendAttachment: (file: File, type: "image" | "audio", meta?: { waveform?: number[]; durationSec?: number }) => Promise<void>;
+  editMessage: (messageId: string, newText: string) => void;
+  deleteMessage: (messageId: string) => void;
+  /** Transient "editing this message" UI state, shared between the message
+   * list (which starts it from a bubble's action menu) and the composer
+   * (which reads/clears it) — kept here so neither has to prop-drill it
+   * through RoomChatPage. */
+  editingTarget: { id: string; text: string } | null;
+  startEditing: (id: string, text: string) => void;
+  cancelEditing: () => void;
   notifyTyping: () => void;
   resolveAttachmentUrl: (payload: ChatPayload) => Promise<string | null>;
 }
@@ -133,6 +148,7 @@ export function RoomChatProvider({
   const [loadingMore, setLoadingMore] = useState(false);
   const [typingUserIds, setTypingUserIds] = useState<Map<string, number>>(new Map());
   const [pending, setPending] = useState<ChatMessage[]>([]);
+  const [editingTarget, setEditingTarget] = useState<{ id: string; text: string } | null>(null);
 
   const chatStateRef = useRef<RoomChatKeyState>(getRoomState(roomId));
   const myKeyPairRef = useRef<CryptoKeyPair | null>(deviceKeyPairSingleton);
@@ -517,6 +533,59 @@ export function RoomChatProvider({
     [socket, user, roomId, toast]
   );
 
+  // Edit/delete are ordinary new encrypted messages carrying editsMessageId
+  // / deletesMessageId — the server never needs to know what either means,
+  // it just relays them like any other message. The collapse pass in
+  // `messages` below is what actually applies them to the target bubble.
+  const editMessage = useCallback(
+    (messageId: string, newText: string) => {
+      if (!socket) return;
+      const state = chatStateRef.current;
+      const key = state.roomKeys.get(state.currentEpoch);
+      if (!key) {
+        toast("Chat isn't ready yet — try again in a moment.", "error");
+        return;
+      }
+      void encryptMessage(key, { text: newText, editsMessageId: messageId }).then(({ ciphertext, iv }) => {
+        socket.emit("chat:message", {
+          roomId,
+          clientMsgId: crypto.randomUUID(),
+          ciphertext,
+          iv,
+          epoch: state.currentEpoch,
+          type: "text",
+        });
+      });
+    },
+    [socket, roomId, toast]
+  );
+
+  const deleteMessage = useCallback(
+    (messageId: string) => {
+      if (!socket) return;
+      const state = chatStateRef.current;
+      const key = state.roomKeys.get(state.currentEpoch);
+      if (!key) {
+        toast("Chat isn't ready yet — try again in a moment.", "error");
+        return;
+      }
+      void encryptMessage(key, { deletesMessageId: messageId }).then(({ ciphertext, iv }) => {
+        socket.emit("chat:message", {
+          roomId,
+          clientMsgId: crypto.randomUUID(),
+          ciphertext,
+          iv,
+          epoch: state.currentEpoch,
+          type: "text",
+        });
+      });
+    },
+    [socket, roomId, toast]
+  );
+
+  const startEditing = useCallback((id: string, text: string) => setEditingTarget({ id, text }), []);
+  const cancelEditing = useCallback(() => setEditingTarget(null), []);
+
   const notifyTyping = useCallback(() => {
     socket?.emit("chat:typing", { roomId });
   }, [socket, roomId]);
@@ -541,22 +610,84 @@ export function RoomChatProvider({
   );
 
   const messages = useMemo<ChatMessage[]>(() => {
-    const fromServer = rawMessages.map((msg) => ({
-      _id: msg._id,
-      senderId: msg.senderId,
-      senderName: msg.senderName,
-      senderAvatarUrl: msg.senderAvatarUrl,
-      isMine: msg.senderId === user?.id,
-      type: msg.type,
-      createdAt: msg.createdAt,
-      payload: decryptedById.get(msg._id) ?? null,
-    }));
+    // Collapse pass: a message carrying editsMessageId/deletesMessageId is
+    // never rendered as its own bubble — it just mutates the target message
+    // it names. Later carriers win if a message was edited more than once.
+    const editByTarget = new Map<string, { payload: ChatPayload; createdAt: string }>();
+    const deletedIds = new Set<string>();
+    const carrierIds = new Set<string>();
+
+    for (const msg of rawMessages) {
+      const payload = decryptedById.get(msg._id);
+      if (!payload) continue;
+      if (payload.deletesMessageId) {
+        deletedIds.add(payload.deletesMessageId);
+        carrierIds.add(msg._id);
+      } else if (payload.editsMessageId) {
+        const existing = editByTarget.get(payload.editsMessageId);
+        if (!existing || existing.createdAt < msg.createdAt) {
+          editByTarget.set(payload.editsMessageId, { payload, createdAt: msg.createdAt });
+        }
+        carrierIds.add(msg._id);
+      }
+    }
+
+    const fromServer = rawMessages
+      .filter((msg) => !carrierIds.has(msg._id))
+      .map((msg) => {
+        const deleted = deletedIds.has(msg._id);
+        const edit = editByTarget.get(msg._id);
+        return {
+          _id: msg._id,
+          senderId: msg.senderId,
+          senderName: msg.senderName,
+          senderAvatarUrl: msg.senderAvatarUrl,
+          isMine: msg.senderId === user?.id,
+          type: msg.type,
+          createdAt: msg.createdAt,
+          payload: deleted ? null : edit ? { ...decryptedById.get(msg._id), text: edit.payload.text } : (decryptedById.get(msg._id) ?? null),
+          edited: !deleted && !!edit,
+          deleted,
+        };
+      });
     return [...fromServer, ...pending];
   }, [rawMessages, decryptedById, pending, user?.id]);
 
   const value = useMemo<RoomChatValue>(
-    () => ({ ready, messages, hasMore, loadingMore, loadMore, typingNames, sendText, sendAttachment, notifyTyping, resolveAttachmentUrl }),
-    [ready, messages, hasMore, loadingMore, loadMore, typingNames, sendText, sendAttachment, notifyTyping, resolveAttachmentUrl]
+    () => ({
+      ready,
+      messages,
+      hasMore,
+      loadingMore,
+      loadMore,
+      typingNames,
+      sendText,
+      sendAttachment,
+      editMessage,
+      deleteMessage,
+      editingTarget,
+      startEditing,
+      cancelEditing,
+      notifyTyping,
+      resolveAttachmentUrl,
+    }),
+    [
+      ready,
+      messages,
+      hasMore,
+      loadingMore,
+      loadMore,
+      typingNames,
+      sendText,
+      sendAttachment,
+      editMessage,
+      deleteMessage,
+      editingTarget,
+      startEditing,
+      cancelEditing,
+      notifyTyping,
+      resolveAttachmentUrl,
+    ]
   );
 
   return <RoomChatContext.Provider value={value}>{children}</RoomChatContext.Provider>;
