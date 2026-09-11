@@ -12,13 +12,13 @@ export function Hero() {
       <div className="grid items-center gap-14 lg:grid-cols-[1.1fr_0.9fr] lg:gap-8">
         <div>
           <Reveal>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand">Free file sharing between your devices</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand">Free, and works in your browser</p>
           </Reveal>
           <Reveal delay={0.05}>
             <h1 className="mt-4 font-display text-5xl font-medium leading-[1.05] tracking-tight text-text-primary sm:text-6xl lg:text-[4.25rem]">
-              Your devices.
+              Send anything to your
               <br />
-              One workspace.
+              other devices, instantly.
             </h1>
           </Reveal>
           <Reveal delay={0.1}>
