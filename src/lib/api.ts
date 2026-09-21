@@ -201,24 +201,60 @@ export const api = {
       apiFetch<{ files: RoomFile[]; nextCursor: string | null }>(
         `/room-files/${roomId}${before ? `?before=${encodeURIComponent(before)}` : ""}`
       ),
-    /** target omitted -> shared with the whole room. `deliverTo: "device"`
-     * pings just that one device live; `"user"` pings every device the
-     * recipient is signed into — either way the file is visible to that
-     * person from anywhere, only the live notification target differs. */
-    upload: (
+    /** One file per call, over XHR rather than fetch, so the caller gets
+     * real upload progress — a multi-file send (e.g. a whole folder) calls
+     * this once per file rather than batching them into one request, so
+     * one huge/failing file can't stall or sink the rest and each file's
+     * progress is genuinely its own. target omitted -> shared with the
+     * whole room. `deliverTo: "device"` pings just that one device live;
+     * `"user"` pings every device the recipient is signed into — either
+     * way the file is visible to that person from anywhere, only the live
+     * notification target differs. */
+    uploadOne: (
       roomId: string,
-      files: File[],
+      file: File,
+      onProgress: (percent: number) => void,
       target?: { recipientId: string; deliverTo: "device" | "user"; deviceId?: string }
-    ) => {
-      const formData = new FormData();
-      files.forEach((file) => formData.append("files", file));
-      if (target) {
-        formData.append("recipientId", target.recipientId);
-        formData.append("deliverTo", target.deliverTo);
-        if (target.deviceId) formData.append("deviceId", target.deviceId);
-      }
-      return apiFetch<{ files: RoomFile[] }>(`/room-files/${roomId}`, { method: "POST", body: formData });
-    },
+    ) =>
+      new Promise<RoomFile>((resolve, reject) => {
+        const formData = new FormData();
+        formData.append("files", file);
+        if (target) {
+          formData.append("recipientId", target.recipientId);
+          formData.append("deliverTo", target.deliverTo);
+          if (target.deviceId) formData.append("deviceId", target.deviceId);
+        }
+
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", `${API_URL}/room-files/${roomId}`);
+        const token = tokenStore.getAccessToken();
+        if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable) onProgress(Math.round((event.loaded / event.total) * 100));
+        };
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const parsed = JSON.parse(xhr.responseText) as { data: { files: RoomFile[] } };
+              resolve(parsed.data.files[0]);
+            } catch {
+              reject(new ApiClientError(xhr.status, "Upload failed"));
+            }
+          } else {
+            const message = (() => {
+              try {
+                return JSON.parse(xhr.responseText).message;
+              } catch {
+                return xhr.statusText;
+              }
+            })();
+            reject(new ApiClientError(xhr.status, message ?? "Upload failed"));
+          }
+        };
+        xhr.onerror = () => reject(new ApiClientError(0, "Upload failed. Check your connection and try again."));
+        xhr.send(formData);
+      }),
     downloadUrl: (roomId: string, fileId: string) => `${API_URL}/room-files/${roomId}/${fileId}/download`,
     download: async (roomId: string, fileId: string): Promise<Blob> => {
       const token = tokenStore.getAccessToken();

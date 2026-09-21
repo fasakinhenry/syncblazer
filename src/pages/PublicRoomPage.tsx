@@ -5,7 +5,9 @@ import {
   ArrowLeft,
   ChatCircleDots,
   Check,
+  CheckCircle,
   Copy,
+  File as FileIcon,
   Files,
   FolderOpen,
   Globe,
@@ -13,6 +15,8 @@ import {
   SignOut,
   Trash,
   UploadSimple,
+  WarningCircle,
+  X,
 } from "@phosphor-icons/react";
 import { api, ApiClientError } from "@/lib/api.ts";
 import type { Room, RoomMemberWithDevices } from "@/lib/types.ts";
@@ -20,7 +24,7 @@ import { useAuth } from "@/context/AuthContext.tsx";
 import { useSocket } from "@/context/SocketContext.tsx";
 import { useToast } from "@/context/ToastContext.tsx";
 import { useNotifications } from "@/context/NotificationContext.tsx";
-import { formatRelativeTime } from "@/lib/format.ts";
+import { formatBytes, formatRelativeTime } from "@/lib/format.ts";
 import { DEVICE_TYPE_ICON } from "@/components/devices/deviceIcons.tsx";
 import { Avatar } from "@/components/Avatar.tsx";
 import { Card } from "@/components/ui/Card.tsx";
@@ -46,6 +50,21 @@ function targetLabel(target: SendTarget): string {
   return "everyone in this room";
 }
 
+interface SendBatchFile {
+  id: string;
+  name: string;
+  size: number;
+  progress: number;
+  status: "uploading" | "done" | "error";
+  error?: string;
+}
+
+interface SendBatch {
+  id: string;
+  targetLabel: string;
+  files: SendBatchFile[];
+}
+
 export function PublicRoomPage() {
   const { roomId } = useParams<{ roomId: string }>();
   const navigate = useNavigate();
@@ -61,6 +80,7 @@ export function PublicRoomPage() {
   const [leaving, setLeaving] = useState(false);
   const [openMenuKey, setOpenMenuKey] = useState<string | null>(null);
   const [sendingKey, setSendingKey] = useState<string | null>(null);
+  const [sendBatches, setSendBatches] = useState<SendBatch[]>([]);
 
   const filesInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
@@ -171,27 +191,68 @@ export function PublicRoomPage() {
     folderInputRef.current?.click();
   };
 
+  const updateBatchFile = (batchId: string, fileId: string, patch: Partial<SendBatchFile>) => {
+    setSendBatches((prev) =>
+      prev.map((b) =>
+        b.id !== batchId ? b : { ...b, files: b.files.map((f) => (f.id !== fileId ? f : { ...f, ...patch })) }
+      )
+    );
+  };
+
+  const dismissBatch = (batchId: string) => {
+    setSendBatches((prev) => prev.filter((b) => b.id !== batchId));
+  };
+
   const uploadChosen = async (fileList: FileList | null) => {
     const target = targetRef.current;
     if (!fileList || fileList.length === 0 || !target || !roomId) return;
     const files = Array.from(fileList);
     const key = targetKey(target);
+    const label = targetLabel(target);
+    const batchId = crypto.randomUUID();
+    const batch: SendBatch = {
+      id: batchId,
+      targetLabel: label,
+      files: files.map((file) => ({ id: crypto.randomUUID(), name: file.name, size: file.size, progress: 0, status: "uploading" })),
+    };
+    setSendBatches((prev) => [batch, ...prev]);
     setSendingKey(key);
-    try {
-      await api.roomFiles.upload(
-        roomId,
-        files,
-        target.kind === "everyone"
-          ? undefined
-          : target.kind === "device"
-            ? { recipientId: target.personId, deliverTo: "device", deviceId: target.deviceId }
-            : { recipientId: target.personId, deliverTo: "user" }
-      );
-      toast(`Sent to ${targetLabel(target)} · saved to Files`, "success");
-    } catch (err) {
-      toast(err instanceof ApiClientError ? err.message : "Couldn't send that. Try again.", "error");
-    } finally {
-      setSendingKey(null);
+
+    const uploadTarget =
+      target.kind === "everyone"
+        ? undefined
+        : target.kind === "device"
+          ? { recipientId: target.personId, deliverTo: "device" as const, deviceId: target.deviceId }
+          : { recipientId: target.personId, deliverTo: "user" as const };
+
+    // One request per file (not one batched request) so a huge or failing
+    // file can't stall or sink the rest, and each row's progress bar is
+    // tracking that file's own upload, not a shared aggregate.
+    const results = await Promise.allSettled(
+      files.map((file, i) => {
+        const fileEntryId = batch.files[i].id;
+        return api.roomFiles
+          .uploadOne(roomId, file, (percent) => updateBatchFile(batchId, fileEntryId, { progress: percent }), uploadTarget)
+          .then(() => updateBatchFile(batchId, fileEntryId, { status: "done", progress: 100 }))
+          .catch((err) => {
+            updateBatchFile(batchId, fileEntryId, {
+              status: "error",
+              error: err instanceof ApiClientError ? err.message : "Failed to send",
+            });
+            throw err;
+          });
+      })
+    );
+    setSendingKey(null);
+
+    const failed = results.filter((r) => r.status === "rejected").length;
+    if (failed === 0) {
+      toast(`Sent to ${label} · saved to Files`, "success");
+      setTimeout(() => dismissBatch(batchId), 4000);
+    } else if (failed === results.length) {
+      toast(`Couldn't send to ${label}. Try again.`, "error");
+    } else {
+      toast(`Sent ${results.length - failed} of ${results.length} files to ${label} — some failed`, "error");
     }
   };
 
@@ -317,6 +378,76 @@ export function PublicRoomPage() {
             />
           </div>
         </Card>
+      )}
+
+      {sendBatches.length > 0 && (
+        <section>
+          <h2 className="mb-3 text-sm font-semibold text-text-secondary">Sending</h2>
+          <div className="flex flex-col gap-3">
+            {sendBatches.map((batch) => {
+              const allSettled = batch.files.every((f) => f.status !== "uploading");
+              const anyError = batch.files.some((f) => f.status === "error");
+              return (
+                <Card key={batch.id} className="flex flex-col gap-3 p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm text-text-primary">
+                      Sending to <span className="font-medium">{batch.targetLabel}</span>
+                    </p>
+                    <div className="flex items-center gap-2">
+                      {allSettled && !anyError && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => navigate(`/rooms/${roomId}/files`)}
+                          className="gap-1.5"
+                        >
+                          <Files className="h-3.5 w-3.5" />
+                          View in Files
+                        </Button>
+                      )}
+                      <button
+                        onClick={() => dismissBatch(batch.id)}
+                        aria-label="Dismiss"
+                        className="rounded-md p-1 text-text-secondary hover:bg-surface-hover"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-2.5">
+                    {batch.files.map((file) => (
+                      <div key={file.id} className="flex items-center gap-3">
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface-hover text-text-secondary">
+                          {file.status === "done" ? (
+                            <CheckCircle className="h-4 w-4 text-success" weight="fill" />
+                          ) : file.status === "error" ? (
+                            <WarningCircle className="h-4 w-4 text-danger" weight="fill" />
+                          ) : (
+                            <FileIcon className="h-4 w-4" />
+                          )}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm text-text-primary">{file.name}</p>
+                          {file.status === "error" ? (
+                            <p className="text-xs text-danger">{file.error ?? "Failed to send"}</p>
+                          ) : (
+                            <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-surface-hover">
+                              <div
+                                className={`h-full rounded-full transition-all ${file.status === "done" ? "bg-success" : "bg-brand"}`}
+                                style={{ width: `${file.progress}%` }}
+                              />
+                            </div>
+                          )}
+                        </div>
+                        <span className="shrink-0 text-xs text-text-secondary">{formatBytes(file.size)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        </section>
       )}
 
       <section>
