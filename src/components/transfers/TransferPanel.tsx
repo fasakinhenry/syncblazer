@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  ArrowsCounterClockwise,
   CaretRight,
-  Check,
   Copy as CopyIcon,
   DownloadSimple,
   File as FileIcon,
@@ -68,15 +68,11 @@ export function TransferPanel({ items, onDownload, onCopy, onDismiss }: Transfer
     setDownloadingId(item.id);
     try {
       await onDownload(item);
+      // Stays downloaded for as long as this item is in the panel — no
+      // timeout reverting it back to a plain "Download" button, so the
+      // "you already have this" state is never lost from under the user.
       setDownloadedIds((prev) => new Set(prev).add(item.id));
       setCelebrate(true);
-      setTimeout(() => {
-        setDownloadedIds((prev) => {
-          const next = new Set(prev);
-          next.delete(item.id);
-          return next;
-        });
-      }, 3000);
     } finally {
       setDownloadingId(null);
     }
@@ -152,22 +148,31 @@ export function TransferPanel({ items, onDownload, onCopy, onDismiss }: Transfer
               )}
 
               {item.status === "completed" && (item.kind === "file" || item.kind === "image") && (
-                <button
-                  onClick={() => handleDownload(item)}
-                  disabled={isDownloading}
-                  className={`mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-medium transition-colors disabled:opacity-60 ${
-                    justDownloaded ? "bg-success/15 text-success" : "bg-brand text-white hover:bg-brand-hover"
-                  }`}
-                >
-                  {isDownloading ? (
-                    <Spinner className="h-4 w-4 border-white/40 border-t-white" />
-                  ) : justDownloaded ? (
-                    <Check className="h-4 w-4" weight="bold" />
-                  ) : (
-                    <DownloadSimple className="h-4 w-4" />
+                <div className="mt-3 flex items-center gap-2">
+                  <button
+                    onClick={() => handleDownload(item)}
+                    disabled={isDownloading}
+                    className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-medium transition-colors disabled:opacity-60 ${
+                      justDownloaded
+                        ? "border border-border text-text-primary hover:bg-surface-hover"
+                        : "bg-brand text-white hover:bg-brand-hover"
+                    }`}
+                  >
+                    {isDownloading ? (
+                      <Spinner className={justDownloaded ? "h-4 w-4" : "h-4 w-4 border-white/40 border-t-white"} />
+                    ) : justDownloaded ? (
+                      <ArrowsCounterClockwise className="h-4 w-4" />
+                    ) : (
+                      <DownloadSimple className="h-4 w-4" />
+                    )}
+                    {isDownloading ? "Downloading…" : justDownloaded ? "Redownload" : "Download file"}
+                  </button>
+                  {justDownloaded && (
+                    <span className="shrink-0 rounded-full bg-success/10 px-2 py-1 text-xs font-medium text-success">
+                      Downloaded
+                    </span>
                   )}
-                  {isDownloading ? "Downloading…" : justDownloaded ? "Downloaded" : "Download file"}
-                </button>
+                </div>
               )}
 
               {item.status === "completed" && (item.kind === "text" || item.kind === "link") && (
