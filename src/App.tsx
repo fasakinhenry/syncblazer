@@ -14,6 +14,7 @@ import { LanPairProvider } from "@/context/LanPairContext.tsx";
 import { ProtectedRoute, GuestRoute, PublicRoute, AdminRoute } from "@/components/ProtectedRoute.tsx";
 import { AppShell } from "@/components/layout/AppShell.tsx";
 import { PwaUpdatePrompt } from "@/components/PwaUpdatePrompt.tsx";
+import { InstallPromptBanner } from "@/components/InstallPromptBanner.tsx";
 import { AnalyticsBeacon } from "@/components/AnalyticsBeacon.tsx";
 import { PageSpinner } from "@/components/ui/Spinner.tsx";
 import { LandingPage } from "@/pages/landing/LandingPage.tsx";
@@ -198,6 +199,7 @@ export default function App() {
                   </Routes>
                   <AnalyticsBeacon />
                   <PwaUpdatePrompt />
+                  <InstallPromptBanner />
                   </LanPairProvider>
                   </QuickPairProvider>
                   </LocalSessionProvider>

@@ -10,6 +10,18 @@ function isStandaloneDisplay(): boolean {
   return window.matchMedia("(display-mode: standalone)").matches || nav.standalone === true;
 }
 
+/** Safari (iOS and iPadOS) never fires beforeinstallprompt at all — the
+ * only way to install there is the user manually doing Share -> "Add to
+ * Home Screen", so there's no programmatic prompt to trigger, only
+ * instructions to show. UA sniffing is genuinely the only option here;
+ * there's no feature-detection substitute for "is this iOS Safari". */
+function isIosSafari(): boolean {
+  const ua = navigator.userAgent;
+  const isIos = /iphone|ipad|ipod/i.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const isSafari = /^((?!chrome|android|crios|fxios).)*safari/i.test(ua);
+  return isIos && isSafari;
+}
+
 export function usePwaInstall() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [installed, setInstalled] = useState(isStandaloneDisplay());
@@ -39,5 +51,13 @@ export function usePwaInstall() {
     return outcome === "accepted";
   };
 
-  return { canInstall: !!deferredPrompt && !installed, installed, promptInstall };
+  return {
+    canInstall: !!deferredPrompt && !installed,
+    /** True on iOS/iPadOS Safari when not already installed — there's no
+     * `promptInstall()` for this path, only Share -> "Add to Home Screen"
+     * instructions to show the user. */
+    needsManualIosInstall: !installed && isIosSafari(),
+    installed,
+    promptInstall,
+  };
 }
