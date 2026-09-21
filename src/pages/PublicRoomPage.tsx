@@ -240,12 +240,15 @@ export function PublicRoomPage() {
       // One request per file (not one batched request) so a huge or
       // failing file can't stall or sink the rest, and each row's
       // progress bar is tracking that file's own upload, not a shared
-      // aggregate.
+      // aggregate. Reusing this send's own batchId as the server-side
+      // batch id too (only when there's more than one file) is what lets
+      // the Files page later offer "download all" for them as a group.
+      const serverBatchId = files.length > 1 ? batchId : undefined;
       const results = await Promise.allSettled(
         files.map((file, i) => {
           const fileEntryId = batch.files[i].id;
           return api.roomFiles
-            .uploadOne(roomId, file, (percent) => updateBatchFile(batchId, fileEntryId, { progress: percent }), uploadTarget)
+            .uploadOne(roomId, file, (percent) => updateBatchFile(batchId, fileEntryId, { progress: percent }), uploadTarget, serverBatchId)
             .then(() => updateBatchFile(batchId, fileEntryId, { status: "done", progress: 100 }))
             .catch((err) => {
               updateBatchFile(batchId, fileEntryId, {

@@ -214,7 +214,11 @@ export const api = {
       roomId: string,
       file: File,
       onProgress: (percent: number) => void,
-      target?: { recipientId: string; deliverTo: "device" | "user"; deviceId?: string }
+      target?: { recipientId: string; deliverTo: "device" | "user"; deviceId?: string },
+      /** Same id passed for every file in one multi-file send — nothing
+       * else ties these separate one-file-per-request uploads back
+       * together as "sent as one batch", which "download all" needs. */
+      batchId?: string
     ) =>
       new Promise<RoomFile>((resolve, reject) => {
         const formData = new FormData();
@@ -224,6 +228,7 @@ export const api = {
           formData.append("deliverTo", target.deliverTo);
           if (target.deviceId) formData.append("deviceId", target.deviceId);
         }
+        if (batchId) formData.append("batchId", batchId);
 
         const xhr = new XMLHttpRequest();
         xhr.open("POST", `${API_URL}/room-files/${roomId}`);

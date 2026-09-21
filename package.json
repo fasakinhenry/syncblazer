@@ -34,6 +34,7 @@
     "@tiptap/react": "^3.30.6",
     "@tiptap/starter-kit": "^3.30.6",
     "@vercel/analytics": "^2.0.1",
+    "fflate": "^0.8.3",
     "idb-keyval": "^6.3.0",
     "motion": "^13.1.1",
     "qr-scanner": "^1.4.2",
