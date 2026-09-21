@@ -4,6 +4,17 @@ import { useToast } from "@/context/ToastContext.tsx";
 import { api } from "@/lib/api.ts";
 import { getCurrentDevice } from "@/lib/deviceInfo.ts";
 
+interface SendOptions {
+  /** 0-100, reported for whichever path (P2P, then cloud fallback if that
+   * fails) actually ends up carrying the file. */
+  onProgress?: (percent: number) => void;
+  /** Suppresses the built-in toast lifecycle — for a caller (e.g. a room's
+   * own "Sending" panel) that renders its own per-file progress instead.
+   * Also switches failures from swallowed-and-toasted to rethrown, so a
+   * caller managing its own batch state can mark that one file as failed. */
+  silent?: boolean;
+}
+
 /** Sends a file directly (P2P) to a device, falling back to the cloud
  * relay if a direct connection can't be established, and records the
  * result as a real Transfer either way so history stays accurate. */
@@ -12,23 +23,28 @@ export function useSendToDevice(roomId: string | undefined) {
   const { toast, updateToast } = useToast();
   const [sendingTo, setSendingTo] = useState<string | null>(null);
 
-  const send = async (targetDeviceId: string, targetDeviceName: string, file: File) => {
+  const send = async (targetDeviceId: string, targetDeviceName: string, file: File, options?: SendOptions) => {
+    const silent = options?.silent ?? false;
     const currentDevice = getCurrentDevice();
     if (!currentDevice || !roomId) {
+      if (silent) throw new Error("Not ready to send yet");
       toast("Still setting up your workspace, give it a second and try again.", "info");
       return;
     }
 
     setSendingTo(targetDeviceId);
     const kind = file.type.startsWith("image/") ? "image" : "file";
-    const toastId = toast(`Sending "${file.name}"… 0%`, "info");
+    const toastId = silent ? null : toast(`Sending "${file.name}"… 0%`, "info");
     let lastToastPercent = 0;
-    const onProgress = (sentBytes: number, totalBytes: number) => {
-      const percent = totalBytes > 0 ? Math.round((sentBytes / totalBytes) * 100) : 0;
-      if (percent >= lastToastPercent + 5 || percent === 100) {
+    const reportProgress = (percent: number) => {
+      options?.onProgress?.(percent);
+      if (toastId !== null && (percent >= lastToastPercent + 5 || percent === 100)) {
         lastToastPercent = percent;
         updateToast(toastId, `Sending "${file.name}"… ${percent}%`, "info");
       }
+    };
+    const onProgress = (sentBytes: number, totalBytes: number) => {
+      reportProgress(totalBytes > 0 ? Math.round((sentBytes / totalBytes) * 100) : 0);
     };
 
     try {
@@ -46,18 +62,13 @@ export function useSendToDevice(roomId: string | undefined) {
           transferMethod: "local",
         });
         await api.transfers.updateStatus(transfer._id, { status: "completed", progress: 100 });
-        updateToast(toastId, `Sent "${file.name}" to ${targetDeviceName}`, "success");
+        if (toastId !== null) updateToast(toastId, `Sent "${file.name}" to ${targetDeviceName}`, "success");
         return;
       }
 
       lastToastPercent = 0;
-      updateToast(toastId, `Direct connection unavailable — sending "${file.name}" via cloud instead… 0%`, "info");
-      const uploaded = await api.uploads.uploadWithProgress(file, (percent) => {
-        if (percent >= lastToastPercent + 5 || percent === 100) {
-          lastToastPercent = percent;
-          updateToast(toastId, `Sending "${file.name}"… ${percent}%`, "info");
-        }
-      });
+      if (toastId !== null) updateToast(toastId, `Direct connection unavailable — sending "${file.name}" via cloud instead… 0%`, "info");
+      const uploaded = await api.uploads.uploadWithProgress(file, reportProgress);
       const { transfer } = await api.transfers.create({
         roomId,
         senderDeviceId: currentDevice._id,
@@ -70,9 +81,10 @@ export function useSendToDevice(roomId: string | undefined) {
         transferMethod: "cloud",
       });
       await api.transfers.updateStatus(transfer._id, { status: "completed", progress: 100 });
-      updateToast(toastId, `Sent "${file.name}" to ${targetDeviceName}`, "success");
-    } catch {
-      updateToast(toastId, `Couldn't send "${file.name}". Please try again.`, "error");
+      if (toastId !== null) updateToast(toastId, `Sent "${file.name}" to ${targetDeviceName}`, "success");
+    } catch (err) {
+      if (toastId !== null) updateToast(toastId, `Couldn't send "${file.name}". Please try again.`, "error");
+      if (silent) throw err;
     } finally {
       setSendingTo(null);
     }

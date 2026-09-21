@@ -23,6 +23,7 @@ import { useSendToDevice } from "@/hooks/useSendToDevice.ts";
 import { useToast } from "@/context/ToastContext.tsx";
 import { formatRelativeTime } from "@/lib/format.ts";
 import { getCurrentDevice } from "@/lib/deviceInfo.ts";
+import { withFolderRelativeName } from "@/lib/fileUtils.ts";
 import { DEVICE_TYPE_ICON } from "@/components/devices/deviceIcons.tsx";
 import { Avatar } from "@/components/Avatar.tsx";
 import { Card } from "@/components/ui/Card.tsx";
@@ -33,6 +34,8 @@ import { PageSpinner } from "@/components/ui/Spinner.tsx";
 import { EmptyState } from "@/components/ui/EmptyState.tsx";
 import { ConfettiBurst } from "@/components/ConfettiBurst.tsx";
 import { useNotifications } from "@/context/NotificationContext.tsx";
+import { SendDropdown } from "@/components/rooms/SendDropdown.tsx";
+import { SendBatchPanel, type SendBatch, type SendBatchFile } from "@/components/rooms/SendBatchPanel.tsx";
 
 export function RoomDetailPage() {
   const { roomId } = useParams<{ roomId: string }>();
@@ -40,7 +43,7 @@ export function RoomDetailPage() {
   const { user } = useAuth();
   const { socket } = useSocket();
   const { toast } = useToast();
-  const { sendMultiple, sendingTo } = useSendToDevice(roomId);
+  const { send } = useSendToDevice(roomId);
 
   const [room, setRoom] = useState<Room | null>(null);
   const [members, setMembers] = useState<RoomMember[]>([]);
@@ -52,7 +55,11 @@ export function RoomDetailPage() {
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [leaving, setLeaving] = useState(false);
+  const [openMenuKey, setOpenMenuKey] = useState<string | null>(null);
+  const [sendingKey, setSendingKey] = useState<string | null>(null);
+  const [sendBatches, setSendBatches] = useState<SendBatch[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
   const targetRef = useRef<{ id: string; name: string } | null>(null);
   const currentDeviceId = getCurrentDevice()?._id;
   const { chatUnread, clearRoomChatUnread } = useNotifications();
@@ -132,17 +139,81 @@ export function RoomDetailPage() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const triggerSend = (device: Device) => {
+  const openSendMenu = (device: Device) => {
+    setOpenMenuKey((current) => (current === device._id ? null : device._id));
     targetRef.current = { id: device._id, name: device.name };
+  };
+
+  const pickFiles = () => {
+    setOpenMenuKey(null);
     fileInputRef.current?.click();
   };
 
-  const onFileChosen = (e: ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files ?? []);
+  const pickFolder = () => {
+    setOpenMenuKey(null);
+    folderInputRef.current?.click();
+  };
+
+  const updateBatchFile = (batchId: string, fileId: string, patch: Partial<SendBatchFile>) => {
+    setSendBatches((prev) =>
+      prev.map((b) =>
+        b.id !== batchId ? b : { ...b, files: b.files.map((f) => (f.id !== fileId ? f : { ...f, ...patch })) }
+      )
+    );
+  };
+
+  const dismissBatch = (batchId: string) => {
+    setSendBatches((prev) => prev.filter((b) => b.id !== batchId));
+  };
+
+  const uploadChosen = async (fileList: FileList | null) => {
     const target = targetRef.current;
+    if (!fileList || fileList.length === 0 || !target) return;
+    const files = Array.from(fileList).map(withFolderRelativeName);
+    const batchId = crypto.randomUUID();
+    const batch: SendBatch = {
+      id: batchId,
+      targetLabel: target.name,
+      files: files.map((file) => ({ id: crypto.randomUUID(), name: file.name, size: file.size, progress: 0, status: "uploading" })),
+    };
+    setSendBatches((prev) => [batch, ...prev]);
+    setSendingKey(target.id);
+
+    // Sequential, not parallel: a device's P2P data channel can only carry
+    // one file at a time — sending two at once would interleave their
+    // chunks on the wire and corrupt both. Cloud fallback has no such
+    // limit, but it's simplest (and just as correct) to treat every file
+    // in the batch the same way here.
+    let anyFailed = false;
+    for (const [i, file] of files.entries()) {
+      const fileEntryId = batch.files[i].id;
+      try {
+        await send(target.id, target.name, file, {
+          silent: true,
+          onProgress: (percent) => updateBatchFile(batchId, fileEntryId, { progress: percent }),
+        });
+        updateBatchFile(batchId, fileEntryId, { status: "done", progress: 100 });
+      } catch (err) {
+        anyFailed = true;
+        updateBatchFile(batchId, fileEntryId, {
+          status: "error",
+          error: err instanceof ApiClientError ? err.message : "Failed to send",
+        });
+      }
+    }
+    setSendingKey(null);
+
+    if (anyFailed) {
+      toast(`Some files couldn't be sent to ${target.name}`, "error");
+    } else {
+      setTimeout(() => dismissBatch(batchId), 4000);
+    }
+  };
+
+  const onFileChosen = (e: ChangeEvent<HTMLInputElement>) => {
+    const fileList = e.target.files;
     e.target.value = "";
-    if (files.length === 0 || !target) return;
-    void sendMultiple(target.id, target.name, files);
+    void uploadChosen(fileList);
   };
 
   const deleteRoom = async () => {
@@ -203,6 +274,15 @@ export function RoomDetailPage() {
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-8">
       <input ref={fileInputRef} type="file" multiple className="hidden" onChange={onFileChosen} />
+      <input
+        ref={folderInputRef}
+        type="file"
+        multiple
+        // @ts-expect-error - webkitdirectory isn't in the DOM typings but every major browser supports it
+        webkitdirectory=""
+        className="hidden"
+        onChange={onFileChosen}
+      />
       <ConfettiBurst active={celebrate} onComplete={() => setCelebrate(false)} />
 
       <div className="flex items-center gap-3">
@@ -288,6 +368,8 @@ export function RoomDetailPage() {
         </Card>
       )}
 
+      <SendBatchPanel batches={sendBatches} onDismiss={dismissBatch} />
+
       <section>
         <h2 className="mb-3 text-sm font-semibold text-text-secondary">Devices here</h2>
         {devices.length === 0 ? (
@@ -298,7 +380,7 @@ export function RoomDetailPage() {
               const Icon = DEVICE_TYPE_ICON[device.type];
               const online = device.status === "online";
               const isCurrent = device._id === currentDeviceId;
-              const isSending = sendingTo === device._id;
+              const isSending = sendingKey === device._id;
               return (
                 <Card key={device._id} className="flex items-center gap-3 p-4">
                   <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-soft text-brand">
@@ -315,10 +397,15 @@ export function RoomDetailPage() {
                     </p>
                   </div>
                   {!isCurrent && online && (
-                    <Button size="sm" variant="secondary" loading={isSending} onClick={() => triggerSend(device)} className="shrink-0 gap-1.5">
-                      <UploadSimple className="h-3.5 w-3.5" />
-                      Send
-                    </Button>
+                    <div className="relative shrink-0">
+                      <Button size="sm" variant="secondary" loading={isSending} onClick={() => openSendMenu(device)} className="gap-1.5">
+                        <UploadSimple className="h-3.5 w-3.5" />
+                        Send
+                      </Button>
+                      {openMenuKey === device._id && (
+                        <SendDropdown onPickFiles={pickFiles} onPickFolder={pickFolder} onClose={() => setOpenMenuKey(null)} />
+                      )}
+                    </div>
                   )}
                 </Card>
               );

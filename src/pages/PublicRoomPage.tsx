@@ -5,18 +5,13 @@ import {
   ArrowLeft,
   ChatCircleDots,
   Check,
-  CheckCircle,
   Copy,
-  File as FileIcon,
   Files,
-  FolderOpen,
   Globe,
   PaperPlaneTilt,
   SignOut,
   Trash,
   UploadSimple,
-  WarningCircle,
-  X,
 } from "@phosphor-icons/react";
 import { api, ApiClientError } from "@/lib/api.ts";
 import type { Room, RoomMemberWithDevices } from "@/lib/types.ts";
@@ -24,7 +19,8 @@ import { useAuth } from "@/context/AuthContext.tsx";
 import { useSocket } from "@/context/SocketContext.tsx";
 import { useToast } from "@/context/ToastContext.tsx";
 import { useNotifications } from "@/context/NotificationContext.tsx";
-import { formatBytes, formatRelativeTime } from "@/lib/format.ts";
+import { formatRelativeTime } from "@/lib/format.ts";
+import { withFolderRelativeName } from "@/lib/fileUtils.ts";
 import { DEVICE_TYPE_ICON } from "@/components/devices/deviceIcons.tsx";
 import { Avatar } from "@/components/Avatar.tsx";
 import { Card } from "@/components/ui/Card.tsx";
@@ -34,6 +30,8 @@ import { ShareTargets } from "@/components/ShareTargets.tsx";
 import { PageSpinner } from "@/components/ui/Spinner.tsx";
 import { EmptyState } from "@/components/ui/EmptyState.tsx";
 import { ConfettiBurst } from "@/components/ConfettiBurst.tsx";
+import { SendDropdown } from "@/components/rooms/SendDropdown.tsx";
+import { SendBatchPanel, type SendBatch, type SendBatchFile } from "@/components/rooms/SendBatchPanel.tsx";
 
 type SendTarget =
   | { kind: "device"; personId: string; personName: string; deviceId: string; deviceName: string }
@@ -48,21 +46,6 @@ function targetLabel(target: SendTarget): string {
   if (target.kind === "device") return `${target.personName} · ${target.deviceName}`;
   if (target.kind === "person") return `all of ${target.personName}'s devices`;
   return "everyone in this room";
-}
-
-interface SendBatchFile {
-  id: string;
-  name: string;
-  size: number;
-  progress: number;
-  status: "uploading" | "done" | "error";
-  error?: string;
-}
-
-interface SendBatch {
-  id: string;
-  targetLabel: string;
-  files: SendBatchFile[];
 }
 
 export function PublicRoomPage() {
@@ -206,7 +189,7 @@ export function PublicRoomPage() {
   const uploadChosen = async (fileList: FileList | null) => {
     const target = targetRef.current;
     if (!fileList || fileList.length === 0 || !target || !roomId) return;
-    const files = Array.from(fileList);
+    const files = Array.from(fileList).map(withFolderRelativeName);
     const key = targetKey(target);
     const label = targetLabel(target);
     const batchId = crypto.randomUUID();
@@ -380,75 +363,11 @@ export function PublicRoomPage() {
         </Card>
       )}
 
-      {sendBatches.length > 0 && (
-        <section>
-          <h2 className="mb-3 text-sm font-semibold text-text-secondary">Sending</h2>
-          <div className="flex flex-col gap-3">
-            {sendBatches.map((batch) => {
-              const allSettled = batch.files.every((f) => f.status !== "uploading");
-              const anyError = batch.files.some((f) => f.status === "error");
-              return (
-                <Card key={batch.id} className="flex flex-col gap-3 p-4">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm text-text-primary">
-                      Sending to <span className="font-medium">{batch.targetLabel}</span>
-                    </p>
-                    <div className="flex items-center gap-2">
-                      {allSettled && !anyError && (
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => navigate(`/rooms/${roomId}/files`)}
-                          className="gap-1.5"
-                        >
-                          <Files className="h-3.5 w-3.5" />
-                          View in Files
-                        </Button>
-                      )}
-                      <button
-                        onClick={() => dismissBatch(batch.id)}
-                        aria-label="Dismiss"
-                        className="rounded-md p-1 text-text-secondary hover:bg-surface-hover"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                  <div className="flex flex-col gap-2.5">
-                    {batch.files.map((file) => (
-                      <div key={file.id} className="flex items-center gap-3">
-                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface-hover text-text-secondary">
-                          {file.status === "done" ? (
-                            <CheckCircle className="h-4 w-4 text-success" weight="fill" />
-                          ) : file.status === "error" ? (
-                            <WarningCircle className="h-4 w-4 text-danger" weight="fill" />
-                          ) : (
-                            <FileIcon className="h-4 w-4" />
-                          )}
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm text-text-primary">{file.name}</p>
-                          {file.status === "error" ? (
-                            <p className="text-xs text-danger">{file.error ?? "Failed to send"}</p>
-                          ) : (
-                            <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-surface-hover">
-                              <div
-                                className={`h-full rounded-full transition-all ${file.status === "done" ? "bg-success" : "bg-brand"}`}
-                                style={{ width: `${file.progress}%` }}
-                              />
-                            </div>
-                          )}
-                        </div>
-                        <span className="shrink-0 text-xs text-text-secondary">{formatBytes(file.size)}</span>
-                      </div>
-                    ))}
-                  </div>
-                </Card>
-              );
-            })}
-          </div>
-        </section>
-      )}
+      <SendBatchPanel
+        batches={sendBatches}
+        onDismiss={dismissBatch}
+        onViewFiles={() => navigate(`/rooms/${roomId}/files`)}
+      />
 
       <section>
         <div className="mb-3 flex items-center justify-between gap-3">
@@ -570,37 +489,5 @@ export function PublicRoomPage() {
         )}
       </section>
     </div>
-  );
-}
-
-function SendDropdown({
-  onPickFiles,
-  onPickFolder,
-  onClose,
-}: {
-  onPickFiles: () => void;
-  onPickFolder: () => void;
-  onClose: () => void;
-}) {
-  return (
-    <>
-      <button aria-label="Close menu" className="fixed inset-0 z-10 cursor-default" onClick={onClose} />
-      <div className="absolute right-0 top-full z-20 mt-1 w-44 rounded-lg border border-border bg-surface p-1 shadow-lg">
-        <button
-          onClick={onPickFiles}
-          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-text-primary hover:bg-surface-hover"
-        >
-          <UploadSimple className="h-4 w-4" />
-          Choose files
-        </button>
-        <button
-          onClick={onPickFolder}
-          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-text-primary hover:bg-surface-hover"
-        >
-          <FolderOpen className="h-4 w-4" />
-          Choose a folder
-        </button>
-      </div>
-    </>
   );
 }
