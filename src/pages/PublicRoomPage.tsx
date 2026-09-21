@@ -32,6 +32,7 @@ import { EmptyState } from "@/components/ui/EmptyState.tsx";
 import { ConfettiBurst } from "@/components/ConfettiBurst.tsx";
 import { SendDropdown } from "@/components/rooms/SendDropdown.tsx";
 import { SendBatchPanel, type SendBatch, type SendBatchFile } from "@/components/rooms/SendBatchPanel.tsx";
+import { IncomingFilesPanel, type IncomingBatch } from "@/components/rooms/IncomingFilesPanel.tsx";
 
 type SendTarget =
   | { kind: "device"; personId: string; personName: string; deviceId: string; deviceName: string }
@@ -74,9 +75,14 @@ export function PublicRoomPage() {
   const [openMenuKey, setOpenMenuKey] = useState<string | null>(null);
   const [sendingKey, setSendingKey] = useState<string | null>(null);
   const [sendBatches, setSendBatches] = useState<SendBatch[]>([]);
+  const [incomingBatches, setIncomingBatches] = useState<IncomingBatch[]>([]);
 
   const filesInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
+  // null until seeded (see the effect below) — files that already existed
+  // when the page loaded must never show up as "just arrived".
+  const knownFileIdsRef = useRef<Set<string> | null>(null);
+  const batchCompleteTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   const chatUnreadCount = roomId ? (chatUnread.get(roomId)?.count ?? 0) : 0;
   const filesUnreadCount = roomId ? (unreadByRoom.get(roomId) ?? 0) : 0;
@@ -140,6 +146,89 @@ export function PublicRoomPage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket, roomId]);
+
+  // Seed the "already existed before I opened this page" set once, so the
+  // very first room:file-shared event we get afterward only reports
+  // genuinely new arrivals, not the room's whole existing history.
+  useEffect(() => {
+    if (!roomId) return;
+    knownFileIdsRef.current = null;
+    api.roomFiles.list(roomId).then(({ files }) => {
+      knownFileIdsRef.current = new Set(files.map((f) => f._id));
+    });
+  }, [roomId]);
+
+  const dismissIncomingBatch = (key: string) => {
+    setIncomingBatches((prev) => prev.filter((b) => b.key !== key));
+    if (batchCompleteTimersRef.current[key]) {
+      clearTimeout(batchCompleteTimersRef.current[key]);
+      delete batchCompleteTimersRef.current[key];
+    }
+  };
+
+  const markIncomingDownloaded = (fileIds: string[]) => {
+    const idSet = new Set(fileIds);
+    setIncomingBatches((prev) =>
+      prev.map((b) => ({
+        ...b,
+        files: b.files.map((f) => (idSet.has(f._id) ? { ...f, downloadedByMe: true, downloadCount: f.downloadCount + 1 } : f)),
+      }))
+    );
+  };
+
+  // Room-scoped and purely component state — unmounting this page (i.e.
+  // navigating away) clears it, unlike the always-on global transfer tray
+  // private rooms' P2P sends use. Files a batch's own uploader is sending
+  // are excluded here; they already watch their own progress in the
+  // "Sending" panel above.
+  useEffect(() => {
+    if (!socket || !roomId) return;
+
+    const onFileShared = () => {
+      const known = knownFileIdsRef.current;
+      if (!known) return;
+      api.roomFiles.list(roomId).then(({ files }) => {
+        const newOnes = files.filter((f) => !known.has(f._id) && f.senderId !== user?.id);
+        files.forEach((f) => known.add(f._id));
+        if (newOnes.length === 0) return;
+
+        setIncomingBatches((prev) => {
+          const next = [...prev];
+          for (const file of newOnes) {
+            const key = file.batchId ?? file._id;
+            const index = next.findIndex((b) => b.key === key);
+            if (index >= 0) next[index] = { ...next[index], files: [...next[index].files, file] };
+            else next.unshift({ key, files: [file], complete: !file.batchId });
+          }
+          return next;
+        });
+
+        // Any batch that just grew might still have more files coming —
+        // (re)start its "no new arrivals for a few seconds" timer, since
+        // there's no way to know the batch's total size upfront.
+        const touchedBatchIds = new Set(newOnes.map((f) => f.batchId).filter((id): id is string => !!id));
+        touchedBatchIds.forEach((key) => {
+          if (batchCompleteTimersRef.current[key]) clearTimeout(batchCompleteTimersRef.current[key]);
+          batchCompleteTimersRef.current[key] = setTimeout(() => {
+            setIncomingBatches((prev) => prev.map((b) => (b.key === key ? { ...b, complete: true } : b)));
+            delete batchCompleteTimersRef.current[key];
+          }, 3000);
+        });
+      });
+    };
+
+    socket.on("room:file-shared", onFileShared);
+    return () => socket.off("room:file-shared", onFileShared);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [socket, roomId, user?.id]);
+
+  // Belt-and-suspenders: clear any still-pending completeness timers on
+  // unmount too, not just on individual dismiss.
+  useEffect(() => {
+    return () => {
+      Object.values(batchCompleteTimersRef.current).forEach(clearTimeout);
+    };
+  }, []);
 
   const copyCode = () => {
     if (!room?.code) return;
@@ -414,6 +503,15 @@ export function PublicRoomPage() {
         onDismiss={dismissBatch}
         onViewFiles={() => navigate(`/rooms/${roomId}/files`)}
       />
+
+      {roomId && (
+        <IncomingFilesPanel
+          roomId={roomId}
+          batches={incomingBatches}
+          onDismiss={dismissIncomingBatch}
+          onFileDownloaded={markIncomingDownloaded}
+        />
+      )}
 
       <section>
         <div className="mb-3 flex items-center justify-between gap-3">

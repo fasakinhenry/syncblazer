@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { zipSync } from "fflate";
 import {
   ArrowLeft,
   ArrowsCounterClockwise,
@@ -17,6 +16,7 @@ import { useAuth } from "@/context/AuthContext.tsx";
 import { useSocket } from "@/context/SocketContext.tsx";
 import { useToast } from "@/context/ToastContext.tsx";
 import { formatBytes, formatRelativeTime } from "@/lib/format.ts";
+import { downloadRoomFilesAsZip, groupByBatch, triggerDownload } from "@/lib/downloadBatch.ts";
 import { Avatar } from "@/components/Avatar.tsx";
 import { Card } from "@/components/ui/Card.tsx";
 import { Button } from "@/components/ui/Button.tsx";
@@ -26,28 +26,6 @@ import { EmptyState } from "@/components/ui/EmptyState.tsx";
 
 function isImage(mimeType?: string): boolean {
   return !!mimeType && mimeType.startsWith("image/");
-}
-
-/** Consecutive files sharing the same batchId were sent together as one
- * multi-file/folder send (see PublicRoomPage's uploadChosen) — grouped so
- * the page can offer "download all" for them instead of one at a time. */
-function groupByBatch(files: RoomFile[]): RoomFile[][] {
-  const groups: RoomFile[][] = [];
-  for (const file of files) {
-    const last = groups[groups.length - 1];
-    if (file.batchId && last?.[0].batchId === file.batchId) last.push(file);
-    else groups.push([file]);
-  }
-  return groups;
-}
-
-function triggerDownload(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
 }
 
 function FileThumbnail({ roomId, file }: { roomId: string; file: RoomFile }) {
@@ -168,22 +146,7 @@ export function FilesPage() {
     const groupKey = group[0].batchId!;
     setBusyId(groupKey);
     try {
-      const entries: Record<string, Uint8Array> = {};
-      const usedNames = new Set<string>();
-      for (const file of group) {
-        const blob = await api.roomFiles.download(roomId, file._id);
-        const buffer = new Uint8Array(await blob.arrayBuffer());
-        // Two files in the same folder send can't collide (their relative
-        // paths differ), but guard anyway rather than silently dropping
-        // one entry if a name is ever repeated.
-        let name = file.name;
-        let suffix = 1;
-        while (usedNames.has(name)) name = `${file.name} (${suffix++})`;
-        usedNames.add(name);
-        entries[name] = buffer;
-      }
-      const zipped = zipSync(entries);
-      triggerDownload(new Blob([zipped], { type: "application/zip" }), `${room?.name ?? "files"}.zip`);
+      await downloadRoomFilesAsZip(roomId, group, `${room?.name ?? "files"}.zip`);
       markDownloaded(new Set(group.map((f) => f._id)));
     } catch (err) {
       toast(err instanceof ApiClientError ? err.message : "Couldn't download all of these files", "error");
