@@ -82,6 +82,53 @@ export function LocalTransferHubPage() {
       </div>
 
       <OptionCard
+        icon={<Monitor className="h-5 w-5" />}
+        title="Desktop App"
+        badge={{ label: "Best for laptops with no camera", tone: "neutral" }}
+        summary="A small companion app for Windows/Mac/Linux that your phone can reach directly over Wi-Fi — the laptop never needs a camera, and it works with zero internet."
+        points={[
+          { label: "Needs", value: "The SyncBlaze desktop app installed on this computer" },
+          { label: "Best for", value: "A laptop with no webcam, still zero internet" },
+          { label: "Your data", value: "Stays on your local network, direct device-to-device" },
+          { label: "Setup", value: "One scan from your phone — the app never needs a camera" },
+        ]}
+        cta={
+          inDesktopApp ? (
+            <Link to="/lan-connect">
+              <Button className="w-full gap-1.5">
+                Host a session
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            </Link>
+          ) : isMobile ? (
+            <Link to="/lan-connect">
+              <Button variant="secondary" className="w-full gap-1.5">
+                Scan a desktop's code
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            </Link>
+          ) : download.relevant && download.url ? (
+            <div className="flex flex-col gap-1.5">
+              <a href={download.url} download>
+                <Button variant="secondary" className="w-full gap-1.5">
+                  <DownloadSimple className="h-4 w-4" />
+                  {download.label}
+                </Button>
+              </a>
+              <Link to="/downloads" className="text-center text-xs font-medium text-text-secondary hover:text-text-primary">
+                Other platforms / architectures →
+              </Link>
+            </div>
+          ) : (
+            <Button variant="secondary" disabled={download.loading} className="w-full gap-1.5">
+              <DownloadSimple className="h-4 w-4" />
+              {download.relevant ? (download.loading ? "Checking for the latest build…" : "Unavailable right now") : "Available for Windows, Mac and Linux"}
+            </Button>
+          )
+        }
+      />
+
+      <OptionCard
         icon={<CloudCheck className="h-5 w-5" />}
         title="Quick Connect"
         badge={{ label: "Recommended", tone: "brand" }}
@@ -129,53 +176,6 @@ export function LocalTransferHubPage() {
               <ArrowRight className="h-4 w-4" />
             </Button>
           </Link>
-        }
-      />
-
-      <OptionCard
-        icon={<Monitor className="h-5 w-5" />}
-        title="Desktop App"
-        badge={{ label: "Best for laptops with no camera", tone: "neutral" }}
-        summary="A small companion app for Windows/Mac/Linux that your phone can reach directly over Wi-Fi — the laptop never needs a camera, and it works with zero internet."
-        points={[
-          { label: "Needs", value: "The SyncBlaze desktop app installed on this computer" },
-          { label: "Best for", value: "A laptop with no webcam, still zero internet" },
-          { label: "Your data", value: "Stays on your local network, direct device-to-device" },
-          { label: "Setup", value: "One scan from your phone — the app never needs a camera" },
-        ]}
-        cta={
-          inDesktopApp ? (
-            <Link to="/lan-connect">
-              <Button className="w-full gap-1.5">
-                Host a session
-                <ArrowRight className="h-4 w-4" />
-              </Button>
-            </Link>
-          ) : isMobile ? (
-            <Link to="/lan-connect">
-              <Button variant="secondary" className="w-full gap-1.5">
-                Scan a desktop's code
-                <ArrowRight className="h-4 w-4" />
-              </Button>
-            </Link>
-          ) : download.relevant && download.url ? (
-            <div className="flex flex-col gap-1.5">
-              <a href={download.url} download>
-                <Button variant="secondary" className="w-full gap-1.5">
-                  <DownloadSimple className="h-4 w-4" />
-                  {download.label}
-                </Button>
-              </a>
-              <Link to="/downloads" className="text-center text-xs font-medium text-text-secondary hover:text-text-primary">
-                Other platforms / architectures →
-              </Link>
-            </div>
-          ) : (
-            <Button variant="secondary" disabled={download.loading} className="w-full gap-1.5">
-              <DownloadSimple className="h-4 w-4" />
-              {download.relevant ? (download.loading ? "Checking for the latest build…" : "Unavailable right now") : "Available for Windows, Mac and Linux"}
-            </Button>
-          )
         }
       />
 
