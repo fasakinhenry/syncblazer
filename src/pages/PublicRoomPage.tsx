@@ -199,7 +199,7 @@ export function PublicRoomPage() {
     setSendBatches((prev) => prev.filter((b) => b.id !== batchId));
   };
 
-  const uploadChosen = async (fileList: FileList | null) => {
+  const uploadChosen = async (pickedFiles: File[]) => {
     const target = pendingSendTarget;
     // Neither of these should ever be true in normal use — but silently
     // returning here is exactly what "picked a folder and nothing
@@ -209,13 +209,13 @@ export function PublicRoomPage() {
       toast("Couldn't tell who to send to — try clicking Send again.", "error");
       return;
     }
-    if (!fileList || fileList.length === 0) {
+    if (pickedFiles.length === 0) {
       toast("No files were selected.", "info");
       return;
     }
 
     try {
-      const files = Array.from(fileList).map(withFolderRelativeName);
+      const files = pickedFiles.map(withFolderRelativeName);
       const key = targetKey(target);
       const label = targetLabel(target);
       const batchId = crypto.randomUUID();
@@ -277,9 +277,15 @@ export function PublicRoomPage() {
   };
 
   const onFilesChosen = (e: ChangeEvent<HTMLInputElement>) => {
-    const fileList = e.target.files;
+    // Extract the actual File objects *before* clearing the input — some
+    // browsers empty the very FileList this handler received in place
+    // once .value is reset, rather than swapping in a fresh one, so
+    // holding onto the FileList itself and only reading it later (inside
+    // the async uploadChosen) meant it could already be empty by then.
+    // Individual File objects, once pulled out, aren't affected by that.
+    const files = Array.from(e.target.files ?? []);
     e.target.value = "";
-    void uploadChosen(fileList);
+    void uploadChosen(files);
   };
 
   if (!room) return <PageSpinner />;
