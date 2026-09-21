@@ -68,6 +68,11 @@ export interface RoomFile {
   senderAvatarUrl?: string;
   senderDeviceId: string;
   name: string;
+  /** Only set when this came from a folder pick — the folder-relative
+   * path (e.g. "vacation/day1/img.jpg"). `name` is always just the plain
+   * leaf filename; this exists only to rebuild folder structure inside a
+   * "download all" zip. */
+  relativePath?: string;
   size: number;
   mimeType?: string;
   batchId?: string;

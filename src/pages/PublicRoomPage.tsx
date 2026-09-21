@@ -20,7 +20,7 @@ import { useSocket } from "@/context/SocketContext.tsx";
 import { useToast } from "@/context/ToastContext.tsx";
 import { useNotifications } from "@/context/NotificationContext.tsx";
 import { formatRelativeTime } from "@/lib/format.ts";
-import { withFolderRelativeName } from "@/lib/fileUtils.ts";
+import { commonFolderName, relativePathOf } from "@/lib/fileUtils.ts";
 import { DEVICE_TYPE_ICON } from "@/components/devices/deviceIcons.tsx";
 import { Avatar } from "@/components/Avatar.tsx";
 import { Card } from "@/components/ui/Card.tsx";
@@ -218,7 +218,9 @@ export function PublicRoomPage() {
     };
 
     socket.on("room:file-shared", onFileShared);
-    return () => socket.off("room:file-shared", onFileShared);
+    return () => {
+      socket.off("room:file-shared", onFileShared);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket, roomId, user?.id]);
 
@@ -304,10 +306,11 @@ export function PublicRoomPage() {
     }
 
     try {
-      const files = pickedFiles.map(withFolderRelativeName);
+      const files = pickedFiles;
       const key = targetKey(target);
       const label = targetLabel(target);
       const batchId = crypto.randomUUID();
+      const folderName = commonFolderName(files);
       const batch: SendBatch = {
         id: batchId,
         targetLabel: label,
@@ -317,7 +320,10 @@ export function PublicRoomPage() {
       setSendingKey(key);
       // Immediate feedback independent of the panel above — so picking a
       // folder always visibly does *something* right away.
-      toast(files.length === 1 ? `Sending "${files[0].name}" to ${label}…` : `Sending ${files.length} files to ${label}…`, "info");
+      toast(
+        `Sending ${folderName ? `"${folderName}" (${files.length} file${files.length === 1 ? "" : "s"})` : files.length === 1 ? `"${files[0].name}"` : `${files.length} files`} to ${label}…`,
+        "info"
+      );
 
       const uploadTarget =
         target.kind === "everyone"
@@ -337,7 +343,14 @@ export function PublicRoomPage() {
         files.map((file, i) => {
           const fileEntryId = batch.files[i].id;
           return api.roomFiles
-            .uploadOne(roomId, file, (percent) => updateBatchFile(batchId, fileEntryId, { progress: percent }), uploadTarget, serverBatchId)
+            .uploadOne(
+              roomId,
+              file,
+              (percent) => updateBatchFile(batchId, fileEntryId, { progress: percent }),
+              uploadTarget,
+              serverBatchId,
+              relativePathOf(file)
+            )
             .then(() => updateBatchFile(batchId, fileEntryId, { status: "done", progress: 100 }))
             .catch((err) => {
               updateBatchFile(batchId, fileEntryId, {

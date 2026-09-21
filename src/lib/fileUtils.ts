@@ -1,13 +1,26 @@
 /** A folder picked via <input webkitdirectory> gives each File its real
- * leaf name in `.name` and the folder-relative path in `.webkitRelativePath`
- * (e.g. "vacation/day1/img.jpg") — but `.name` is what every downstream
- * consumer actually looks at: multer's `originalname` on upload, a P2P
- * transfer's display name, a Transfer record's `name` field. None of them
- * know `webkitRelativePath` exists. Since File.name itself isn't writable,
- * this rebuilds the File with that path as its name, so folder context
- * survives everywhere else without any of those call sites having to
- * special-case it. */
-export function withFolderRelativeName(file: File): File {
-  if (!file.webkitRelativePath) return file;
-  return new File([file], file.webkitRelativePath, { type: file.type, lastModified: file.lastModified });
+ * leaf name in `.name` (e.g. "img.jpg") and the folder-relative path in
+ * `.webkitRelativePath` (e.g. "vacation/day1/img.jpg"). `.name` is what
+ * should show up everywhere — the file list, a downloaded file's name on
+ * disk, a redownload — so this is deliberately just a passthrough to
+ * `.webkitRelativePath`, not a rename: an earlier version of this file
+ * renamed the File to that full path, which put the folder name in front
+ * of every single file's displayed/downloaded name. The relative path is
+ * still tracked (via this helper, passed alongside the file rather than
+ * baked into its name) purely so a "download all" zip can rebuild the
+ * original folder structure. */
+export function relativePathOf(file: File): string | undefined {
+  return file.webkitRelativePath || undefined;
+}
+
+/** The shared top-level folder name for a set of picked files, if they
+ * all came from the same folder pick — e.g. ["vacation/a.jpg",
+ * "vacation/day1/b.jpg"] -> "vacation". Null for a plain multi-file
+ * pick (no common folder), so callers can fall back to an "N files"
+ * description instead of claiming a folder that doesn't exist. */
+export function commonFolderName(files: File[]): string | null {
+  if (files.length === 0) return null;
+  const roots = files.map((f) => f.webkitRelativePath.split("/")[0]);
+  if (roots.some((r) => !r)) return null;
+  return roots.every((r) => r === roots[0]) ? roots[0] : null;
 }

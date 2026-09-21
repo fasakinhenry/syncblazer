@@ -23,7 +23,7 @@ import { useSendToDevice } from "@/hooks/useSendToDevice.ts";
 import { useToast } from "@/context/ToastContext.tsx";
 import { formatRelativeTime } from "@/lib/format.ts";
 import { getCurrentDevice } from "@/lib/deviceInfo.ts";
-import { withFolderRelativeName } from "@/lib/fileUtils.ts";
+import { commonFolderName } from "@/lib/fileUtils.ts";
 import { DEVICE_TYPE_ICON } from "@/components/devices/deviceIcons.tsx";
 import { Avatar } from "@/components/Avatar.tsx";
 import { Card } from "@/components/ui/Card.tsx";
@@ -195,8 +195,9 @@ export function RoomDetailPage() {
     }
 
     try {
-      const files = pickedFiles.map(withFolderRelativeName);
+      const files = pickedFiles;
       const batchId = crypto.randomUUID();
+      const folderName = commonFolderName(files);
       const batch: SendBatch = {
         id: batchId,
         targetLabel: target.name,
@@ -208,7 +209,7 @@ export function RoomDetailPage() {
       // folder always visibly does *something* right away, even before
       // the first file's status has a chance to update.
       toast(
-        files.length === 1 ? `Sending "${files[0].name}" to ${target.name}…` : `Sending ${files.length} files to ${target.name}…`,
+        `Sending ${folderName ? `"${folderName}" (${files.length} file${files.length === 1 ? "" : "s"})` : files.length === 1 ? `"${files[0].name}"` : `${files.length} files`} to ${target.name}…`,
         "info"
       );
 

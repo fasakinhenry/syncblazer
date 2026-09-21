@@ -218,7 +218,11 @@ export const api = {
       /** Same id passed for every file in one multi-file send — nothing
        * else ties these separate one-file-per-request uploads back
        * together as "sent as one batch", which "download all" needs. */
-      batchId?: string
+      batchId?: string,
+      /** Folder-relative path (see fileUtils.ts's relativePathOf) — kept
+       * separate from the file's own name, purely so "download all" can
+       * rebuild the original folder structure inside its zip. */
+      relativePath?: string
     ) =>
       new Promise<RoomFile>((resolve, reject) => {
         const formData = new FormData();
@@ -229,6 +233,7 @@ export const api = {
           if (target.deviceId) formData.append("deviceId", target.deviceId);
         }
         if (batchId) formData.append("batchId", batchId);
+        if (relativePath) formData.append("relativePath", relativePath);
 
         const xhr = new XMLHttpRequest();
         xhr.open("POST", `${API_URL}/room-files/${roomId}`);
