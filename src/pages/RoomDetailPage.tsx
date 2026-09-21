@@ -37,6 +37,16 @@ import { useNotifications } from "@/context/NotificationContext.tsx";
 import { SendDropdown } from "@/components/rooms/SendDropdown.tsx";
 import { SendBatchPanel, type SendBatch, type SendBatchFile } from "@/components/rooms/SendBatchPanel.tsx";
 
+// Module-level, not a ref: the gap between opening a native file/folder
+// picker and its change event firing can be long (browsing a folder,
+// confirming the browser's own "trust this site" dialog), and if anything
+// causes this component to remount in that window a ref would reset to
+// null, silently losing which device the picker was even opened for. A
+// module-level variable survives that since it isn't tied to the
+// component instance — there's only ever one of these pickers open at a
+// time for this page anyway.
+let pendingSendTarget: { id: string; name: string } | null = null;
+
 export function RoomDetailPage() {
   const { roomId } = useParams<{ roomId: string }>();
   const navigate = useNavigate();
@@ -60,7 +70,6 @@ export function RoomDetailPage() {
   const [sendBatches, setSendBatches] = useState<SendBatch[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
-  const targetRef = useRef<{ id: string; name: string } | null>(null);
   const currentDeviceId = getCurrentDevice()?._id;
   const { chatUnread, clearRoomChatUnread } = useNotifications();
   const unreadCount = roomId ? (chatUnread.get(roomId)?.count ?? 0) : 0;
@@ -141,7 +150,7 @@ export function RoomDetailPage() {
 
   const openSendMenu = (device: Device) => {
     setOpenMenuKey((current) => (current === device._id ? null : device._id));
-    targetRef.current = { id: device._id, name: device.name };
+    pendingSendTarget = { id: device._id, name: device.name };
   };
 
   const pickFiles = () => {
@@ -171,8 +180,19 @@ export function RoomDetailPage() {
   };
 
   const uploadChosen = async (fileList: FileList | null) => {
-    const target = targetRef.current;
-    if (!fileList || fileList.length === 0 || !target) return;
+    const target = pendingSendTarget;
+    // Neither of these should ever be true in normal use — but silently
+    // returning here is exactly what "picked a folder and nothing
+    // happened" looks like from the outside, so surface it instead of
+    // guessing why later.
+    if (!target) {
+      toast("Couldn't tell who to send to — try clicking Send again.", "error");
+      return;
+    }
+    if (!fileList || fileList.length === 0) {
+      toast("No files were selected.", "info");
+      return;
+    }
 
     try {
       const files = Array.from(fileList).map(withFolderRelativeName);

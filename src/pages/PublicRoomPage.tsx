@@ -48,6 +48,16 @@ function targetLabel(target: SendTarget): string {
   return "everyone in this room";
 }
 
+// Module-level, not a ref: the gap between opening a native file/folder
+// picker and its change event firing can be long (browsing a folder,
+// confirming the browser's own "trust this site" dialog), and if anything
+// causes this component to remount in that window a ref would reset to
+// null, silently losing which target the picker was even opened for. A
+// module-level variable survives that since it isn't tied to the
+// component instance — there's only ever one of these pickers open at a
+// time for this page anyway.
+let pendingSendTarget: SendTarget | null = null;
+
 export function PublicRoomPage() {
   const { roomId } = useParams<{ roomId: string }>();
   const navigate = useNavigate();
@@ -67,7 +77,6 @@ export function PublicRoomPage() {
 
   const filesInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
-  const targetRef = useRef<SendTarget | null>(null);
 
   const chatUnreadCount = roomId ? (chatUnread.get(roomId)?.count ?? 0) : 0;
   const filesUnreadCount = roomId ? (unreadByRoom.get(roomId) ?? 0) : 0;
@@ -161,7 +170,7 @@ export function PublicRoomPage() {
 
   const openSendMenu = (key: string, target: SendTarget) => {
     setOpenMenuKey((current) => (current === key ? null : key));
-    targetRef.current = target;
+    pendingSendTarget = target;
   };
 
   const pickFiles = () => {
@@ -191,8 +200,19 @@ export function PublicRoomPage() {
   };
 
   const uploadChosen = async (fileList: FileList | null) => {
-    const target = targetRef.current;
-    if (!fileList || fileList.length === 0 || !target || !roomId) return;
+    const target = pendingSendTarget;
+    // Neither of these should ever be true in normal use — but silently
+    // returning here is exactly what "picked a folder and nothing
+    // happened" looks like from the outside, so surface it instead of
+    // guessing why later.
+    if (!target || !roomId) {
+      toast("Couldn't tell who to send to — try clicking Send again.", "error");
+      return;
+    }
+    if (!fileList || fileList.length === 0) {
+      toast("No files were selected.", "info");
+      return;
+    }
 
     try {
       const files = Array.from(fileList).map(withFolderRelativeName);
