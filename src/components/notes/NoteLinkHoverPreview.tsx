@@ -4,8 +4,23 @@ import { getLinkPreview, type LinkPreviewData } from "@/lib/linkPreviewCache.ts"
 
 /** Floating preview card for a link hovered inside a note's body — reuses
  * the same cache LinkPreviewCards already populates below the note, so
- * hovering a link you've already seen previewed there is instant. */
-export function NoteLinkHoverPreview({ url, x, y }: { url: string; x: number; y: number }) {
+ * hovering a link you've already seen previewed there is instant. It's a
+ * real link itself (not just a static card): clicking it opens the URL,
+ * and it reports its own hover state back to the caller so moving the
+ * mouse from the link down into this card doesn't dismiss it mid-transit. */
+export function NoteLinkHoverPreview({
+  url,
+  x,
+  y,
+  onMouseEnter,
+  onMouseLeave,
+}: {
+  url: string;
+  x: number;
+  y: number;
+  onMouseEnter?: () => void;
+  onMouseLeave?: () => void;
+}) {
   const [data, setData] = useState<LinkPreviewData | null>(null);
   const [loaded, setLoaded] = useState(false);
 
@@ -30,8 +45,13 @@ export function NoteLinkHoverPreview({ url, x, y }: { url: string; x: number; y:
   }
 
   return (
-    <div
-      className="note-link-preview-popover fixed z-30 flex w-64 items-center gap-2.5 rounded-lg border border-border bg-surface p-2.5 shadow-lg"
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+      className="note-link-preview-popover fixed z-30 flex w-64 items-center gap-2.5 rounded-lg border border-border bg-surface p-2.5 shadow-lg transition-colors hover:border-brand hover:bg-surface-hover"
       style={{ left: x, top: y }}
     >
       {data?.image ? (
@@ -45,6 +65,6 @@ export function NoteLinkHoverPreview({ url, x, y }: { url: string; x: number; y:
         <p className="truncate text-sm font-medium text-text-primary">{loaded ? data?.title || hostname : hostname}</p>
         <p className="truncate text-xs text-text-secondary">{hostname}</p>
       </div>
-    </div>
+    </a>
   );
 }

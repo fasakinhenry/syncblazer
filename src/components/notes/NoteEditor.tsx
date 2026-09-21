@@ -96,6 +96,7 @@ export function NoteEditor({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [linkPreview, setLinkPreview] = useState<{ url: string; x: number; y: number } | null>(null);
+  const hideTimerRef = useRef<(() => void) | null>(null);
   const activeCollab = collab?.ready ? collab : null;
 
   const onSelectCollaboratorRef = useRef(onSelectCollaborator);
@@ -162,6 +163,12 @@ export function NoteEditor({
   useEffect(() => {
     if (!editor) return;
     const dom = editor.view.dom;
+    // A ref (not a local closure var) so the popover's own mouseenter,
+    // wired up below via hoverPreviewHandlers, can cancel a hide that this
+    // listener already scheduled — previously the popover had no way to
+    // reach it, so a quick move from the link into the popover (crossing
+    // the few pixels of gap between them) often lost the race against the
+    // 150ms timer and the preview vanished before it could be clicked.
     let hideTimer: ReturnType<typeof setTimeout> | null = null;
 
     const onMouseOver = (e: globalThis.MouseEvent) => {
@@ -177,15 +184,22 @@ export function NoteEditor({
     const onMouseOut = (e: globalThis.MouseEvent) => {
       const related = e.relatedTarget as HTMLElement | null;
       if (related?.closest?.(".note-link-preview-popover")) return;
-      hideTimer = setTimeout(() => setLinkPreview(null), 150);
+      hideTimer = setTimeout(() => setLinkPreview(null), 300);
     };
 
     dom.addEventListener("mouseover", onMouseOver);
     dom.addEventListener("mouseout", onMouseOut);
+    hideTimerRef.current = () => {
+      if (hideTimer) {
+        clearTimeout(hideTimer);
+        hideTimer = null;
+      }
+    };
     return () => {
       dom.removeEventListener("mouseover", onMouseOver);
       dom.removeEventListener("mouseout", onMouseOut);
       if (hideTimer) clearTimeout(hideTimer);
+      hideTimerRef.current = null;
     };
   }, [editor]);
 
@@ -269,7 +283,15 @@ export function NoteEditor({
       </p>
 
       {menu && <NoteContextMenu x={menu.x} y={menu.y} items={contextItems} onClose={() => setMenu(null)} />}
-      {linkPreview && <NoteLinkHoverPreview url={linkPreview.url} x={linkPreview.x} y={linkPreview.y} />}
+      {linkPreview && (
+        <NoteLinkHoverPreview
+          url={linkPreview.url}
+          x={linkPreview.x}
+          y={linkPreview.y}
+          onMouseEnter={() => hideTimerRef.current?.()}
+          onMouseLeave={() => setLinkPreview(null)}
+        />
+      )}
     </div>
   );
 }
