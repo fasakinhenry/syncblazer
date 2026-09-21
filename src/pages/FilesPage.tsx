@@ -74,11 +74,16 @@ export function FilesPage() {
 
   const loadFiles = () => {
     if (!roomId) return;
-    api.roomFiles.list(roomId).then(({ files }) => {
-      setFiles(files);
-      setLoading(false);
-      loadedOnce.current = true;
-    });
+    api.roomFiles
+      .list(roomId)
+      .then(({ files }) => {
+        setFiles(files);
+        loadedOnce.current = true;
+      })
+      .catch(() => {
+        if (!loadedOnce.current) toast("Couldn't load files right now. Pull to refresh and try again.", "error");
+      })
+      .finally(() => setLoading(false));
   };
 
   useEffect(() => {

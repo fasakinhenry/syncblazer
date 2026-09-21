@@ -9,7 +9,7 @@
 
 import { precacheAndRoute, createHandlerBoundToURL } from "workbox-precaching";
 import { registerRoute, NavigationRoute } from "workbox-routing";
-import { NetworkFirst } from "workbox-strategies";
+import { NetworkFirst, NetworkOnly } from "workbox-strategies";
 import { CacheableResponsePlugin } from "workbox-cacheable-response";
 import { ExpirationPlugin } from "workbox-expiration";
 
@@ -21,8 +21,27 @@ declare const self: ServiceWorkerGlobalScope & {
 // automatically. vite-plugin-pwa injects the manifest array at build time.
 precacheAndRoute(self.__WB_MANIFEST);
 
-// 2. Port of the old workbox.runtimeCaching entry: cache API GETs, prefer
-// the network but fall back to cache within 4s or if offline.
+// 2a. Endpoints that are really just "did something just happen" state
+// (new files, notifications, chat, transfers, activity, live member/device
+// status) must never silently answer from a stale cache — on a slow network
+// (a cold Render instance, patchy mobile data) NetworkFirst's fallback would
+// otherwise serve an old, previously-empty snapshot as if it were live,
+// which reads as "the file/message never arrived" even though it did. These
+// always hit the network; registered before the general /api/ rule below so
+// they're matched first.
+registerRoute(
+  ({ url }) =>
+    url.pathname.startsWith("/api/room-files/") ||
+    url.pathname.startsWith("/api/notifications") ||
+    url.pathname.startsWith("/api/chat/") ||
+    url.pathname.startsWith("/api/transfers") ||
+    url.pathname.startsWith("/api/activity") ||
+    /\/api\/rooms\/[^/]+\/members-with-devices$/.test(url.pathname),
+  new NetworkOnly()
+);
+
+// 2b. Port of the old workbox.runtimeCaching entry: cache other API GETs,
+// prefer the network but fall back to cache within 4s or if offline.
 registerRoute(
   ({ url }) => url.pathname.startsWith("/api/"),
   new NetworkFirst({
