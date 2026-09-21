@@ -72,6 +72,19 @@ body {
   border-color: var(--color-border);
 }
 
+/* iOS Safari auto-zooms into a focused field (and visibly jolts the whole
+ * page while it does) whenever that field's rendered font-size is under
+ * 16px — several inputs here use Tailwind's text-sm (14px). Force 16px on
+ * form fields specifically at touch-sized widths so focusing one never
+ * triggers that zoom; desktop is untouched. */
+@media (max-width: 767px) {
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
+
 ::selection {
   background-color: var(--color-brand-soft);
 }

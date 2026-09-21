@@ -86,7 +86,7 @@ export function RoomChatPage() {
   if (!roomId) return null;
 
   return (
-    <div className="mx-auto flex h-[calc(100vh-8rem)] max-w-2xl flex-col overflow-hidden rounded-xl border border-border bg-surface">
+    <div className="mx-auto flex h-[calc(100dvh-8rem)] max-w-2xl flex-col overflow-hidden rounded-xl border border-border bg-surface">
       <div className="flex items-center gap-3 border-b border-border px-4 py-3">
         <button
           onClick={() => navigate(`/rooms/${roomId}`)}
