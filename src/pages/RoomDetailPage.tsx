@@ -151,6 +151,10 @@ export function RoomDetailPage() {
 
   const pickFolder = () => {
     setOpenMenuKey(null);
+    // The browser shows its own "only upload folders you trust this site
+    // with" confirmation before handing back the files — expected, not an
+    // error, but easy to mistake for one if it's the only thing on screen.
+    toast("Your browser will ask you to confirm the folder — click Upload to continue.", "info");
     folderInputRef.current?.click();
   };
 
@@ -169,44 +173,69 @@ export function RoomDetailPage() {
   const uploadChosen = async (fileList: FileList | null) => {
     const target = targetRef.current;
     if (!fileList || fileList.length === 0 || !target) return;
-    const files = Array.from(fileList).map(withFolderRelativeName);
-    const batchId = crypto.randomUUID();
-    const batch: SendBatch = {
-      id: batchId,
-      targetLabel: target.name,
-      files: files.map((file) => ({ id: crypto.randomUUID(), name: file.name, size: file.size, progress: 0, status: "uploading" })),
-    };
-    setSendBatches((prev) => [batch, ...prev]);
-    setSendingKey(target.id);
 
-    // Sequential, not parallel: a device's P2P data channel can only carry
-    // one file at a time — sending two at once would interleave their
-    // chunks on the wire and corrupt both. Cloud fallback has no such
-    // limit, but it's simplest (and just as correct) to treat every file
-    // in the batch the same way here.
-    let anyFailed = false;
-    for (const [i, file] of files.entries()) {
-      const fileEntryId = batch.files[i].id;
-      try {
-        await send(target.id, target.name, file, {
-          silent: true,
-          onProgress: (percent) => updateBatchFile(batchId, fileEntryId, { progress: percent }),
-        });
-        updateBatchFile(batchId, fileEntryId, { status: "done", progress: 100 });
-      } catch (err) {
-        anyFailed = true;
-        updateBatchFile(batchId, fileEntryId, {
-          status: "error",
-          error: err instanceof ApiClientError ? err.message : "Failed to send",
-        });
+    try {
+      const files = Array.from(fileList).map(withFolderRelativeName);
+      const batchId = crypto.randomUUID();
+      const batch: SendBatch = {
+        id: batchId,
+        targetLabel: target.name,
+        files: files.map((file) => ({ id: crypto.randomUUID(), name: file.name, size: file.size, progress: 0, status: "connecting" })),
+      };
+      setSendBatches((prev) => [batch, ...prev]);
+      setSendingKey(target.id);
+      // Immediate feedback independent of the panel above — so picking a
+      // folder always visibly does *something* right away, even before
+      // the first file's status has a chance to update.
+      toast(
+        files.length === 1 ? `Sending "${files[0].name}" to ${target.name}…` : `Sending ${files.length} files to ${target.name}…`,
+        "info"
+      );
+
+      // Sequential, not parallel: a device's P2P data channel can only
+      // carry one file at a time — sending two at once would interleave
+      // their chunks on the wire and corrupt both. Cloud fallback has no
+      // such limit, but it's simplest (and just as correct) to treat
+      // every file in the batch the same way here.
+      let anyFailed = false;
+      let skipP2P = false;
+      for (const [i, file] of files.entries()) {
+        const fileEntryId = batch.files[i].id;
+        updateBatchFile(batchId, fileEntryId, { status: skipP2P ? "uploading" : "connecting" });
+        try {
+          const method = await send(target.id, target.name, file, {
+            silent: true,
+            skipP2P,
+            onPhase: (phase) => updateBatchFile(batchId, fileEntryId, { status: phase === "connecting" ? "connecting" : "uploading" }),
+            onProgress: (percent) => updateBatchFile(batchId, fileEntryId, { progress: percent }),
+          });
+          // A device unreachable directly for one file will be unreachable
+          // for the rest of this batch too — skip straight to cloud for
+          // them instead of each separately waiting out the connection
+          // timeout before falling back.
+          if (method === "cloud") skipP2P = true;
+          updateBatchFile(batchId, fileEntryId, { status: "done", progress: 100 });
+        } catch (err) {
+          anyFailed = true;
+          updateBatchFile(batchId, fileEntryId, {
+            status: "error",
+            error: err instanceof ApiClientError ? err.message : "Failed to send",
+          });
+        }
       }
-    }
-    setSendingKey(null);
 
-    if (anyFailed) {
-      toast(`Some files couldn't be sent to ${target.name}`, "error");
-    } else {
-      setTimeout(() => dismissBatch(batchId), 4000);
+      if (anyFailed) {
+        toast(`Some files couldn't be sent to ${target.name}`, "error");
+      } else {
+        setTimeout(() => dismissBatch(batchId), 4000);
+      }
+    } catch (err) {
+      // Anything that fails before/between per-file attempts (building the
+      // batch, reading the FileList) must still surface — otherwise it's
+      // exactly the silent "nothing happens" this whole panel exists to fix.
+      toast(err instanceof ApiClientError ? err.message : "Couldn't start that send. Try again.", "error");
+    } finally {
+      setSendingKey(null);
     }
   };
 

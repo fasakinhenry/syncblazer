@@ -1,4 +1,4 @@
-import { CheckCircle, File as FileIcon, WarningCircle, X } from "@phosphor-icons/react";
+import { CheckCircle, File as FileIcon, Spinner, WarningCircle, X } from "@phosphor-icons/react";
 import { formatBytes } from "@/lib/format.ts";
 import { Card } from "@/components/ui/Card.tsx";
 import { Button } from "@/components/ui/Button.tsx";
@@ -8,7 +8,11 @@ export interface SendBatchFile {
   name: string;
   size: number;
   progress: number;
-  status: "uploading" | "done" | "error";
+  /** "connecting" — attempting a direct device-to-device link, which can
+   * take up to ~15s to give up on if the device isn't reachable that way;
+   * shown as its own state (not a stuck-looking 0% bar) since there's no
+   * byte progress yet either way. */
+  status: "connecting" | "uploading" | "done" | "error";
   error?: string;
 }
 
@@ -39,7 +43,7 @@ export function SendBatchPanel({
       <h2 className="mb-3 text-sm font-semibold text-text-secondary">Sending</h2>
       <div className="flex flex-col gap-3">
         {batches.map((batch) => {
-          const allSettled = batch.files.every((f) => f.status !== "uploading");
+          const allSettled = batch.files.every((f) => f.status === "done" || f.status === "error");
           const anyError = batch.files.some((f) => f.status === "error");
           return (
             <Card key={batch.id} className="flex flex-col gap-3 p-4">
@@ -71,6 +75,8 @@ export function SendBatchPanel({
                         <CheckCircle className="h-4 w-4 text-success" weight="fill" />
                       ) : file.status === "error" ? (
                         <WarningCircle className="h-4 w-4 text-danger" weight="fill" />
+                      ) : file.status === "connecting" ? (
+                        <Spinner className="h-4 w-4 animate-spin" />
                       ) : (
                         <FileIcon className="h-4 w-4" />
                       )}
@@ -79,6 +85,8 @@ export function SendBatchPanel({
                       <p className="truncate text-sm text-text-primary">{file.name}</p>
                       {file.status === "error" ? (
                         <p className="text-xs text-danger">{file.error ?? "Failed to send"}</p>
+                      ) : file.status === "connecting" ? (
+                        <p className="text-xs text-text-secondary">Connecting directly…</p>
                       ) : (
                         <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-surface-hover">
                           <div

@@ -171,6 +171,10 @@ export function PublicRoomPage() {
 
   const pickFolder = () => {
     setOpenMenuKey(null);
+    // The browser shows its own "only upload folders you trust this site
+    // with" confirmation before handing back the files — expected, not an
+    // error, but easy to mistake for one if it's the only thing on screen.
+    toast("Your browser will ask you to confirm the folder — click Upload to continue.", "info");
     folderInputRef.current?.click();
   };
 
@@ -189,53 +193,66 @@ export function PublicRoomPage() {
   const uploadChosen = async (fileList: FileList | null) => {
     const target = targetRef.current;
     if (!fileList || fileList.length === 0 || !target || !roomId) return;
-    const files = Array.from(fileList).map(withFolderRelativeName);
-    const key = targetKey(target);
-    const label = targetLabel(target);
-    const batchId = crypto.randomUUID();
-    const batch: SendBatch = {
-      id: batchId,
-      targetLabel: label,
-      files: files.map((file) => ({ id: crypto.randomUUID(), name: file.name, size: file.size, progress: 0, status: "uploading" })),
-    };
-    setSendBatches((prev) => [batch, ...prev]);
-    setSendingKey(key);
 
-    const uploadTarget =
-      target.kind === "everyone"
-        ? undefined
-        : target.kind === "device"
-          ? { recipientId: target.personId, deliverTo: "device" as const, deviceId: target.deviceId }
-          : { recipientId: target.personId, deliverTo: "user" as const };
+    try {
+      const files = Array.from(fileList).map(withFolderRelativeName);
+      const key = targetKey(target);
+      const label = targetLabel(target);
+      const batchId = crypto.randomUUID();
+      const batch: SendBatch = {
+        id: batchId,
+        targetLabel: label,
+        files: files.map((file) => ({ id: crypto.randomUUID(), name: file.name, size: file.size, progress: 0, status: "uploading" })),
+      };
+      setSendBatches((prev) => [batch, ...prev]);
+      setSendingKey(key);
+      // Immediate feedback independent of the panel above — so picking a
+      // folder always visibly does *something* right away.
+      toast(files.length === 1 ? `Sending "${files[0].name}" to ${label}…` : `Sending ${files.length} files to ${label}…`, "info");
 
-    // One request per file (not one batched request) so a huge or failing
-    // file can't stall or sink the rest, and each row's progress bar is
-    // tracking that file's own upload, not a shared aggregate.
-    const results = await Promise.allSettled(
-      files.map((file, i) => {
-        const fileEntryId = batch.files[i].id;
-        return api.roomFiles
-          .uploadOne(roomId, file, (percent) => updateBatchFile(batchId, fileEntryId, { progress: percent }), uploadTarget)
-          .then(() => updateBatchFile(batchId, fileEntryId, { status: "done", progress: 100 }))
-          .catch((err) => {
-            updateBatchFile(batchId, fileEntryId, {
-              status: "error",
-              error: err instanceof ApiClientError ? err.message : "Failed to send",
+      const uploadTarget =
+        target.kind === "everyone"
+          ? undefined
+          : target.kind === "device"
+            ? { recipientId: target.personId, deliverTo: "device" as const, deviceId: target.deviceId }
+            : { recipientId: target.personId, deliverTo: "user" as const };
+
+      // One request per file (not one batched request) so a huge or
+      // failing file can't stall or sink the rest, and each row's
+      // progress bar is tracking that file's own upload, not a shared
+      // aggregate.
+      const results = await Promise.allSettled(
+        files.map((file, i) => {
+          const fileEntryId = batch.files[i].id;
+          return api.roomFiles
+            .uploadOne(roomId, file, (percent) => updateBatchFile(batchId, fileEntryId, { progress: percent }), uploadTarget)
+            .then(() => updateBatchFile(batchId, fileEntryId, { status: "done", progress: 100 }))
+            .catch((err) => {
+              updateBatchFile(batchId, fileEntryId, {
+                status: "error",
+                error: err instanceof ApiClientError ? err.message : "Failed to send",
+              });
+              throw err;
             });
-            throw err;
-          });
-      })
-    );
-    setSendingKey(null);
+        })
+      );
 
-    const failed = results.filter((r) => r.status === "rejected").length;
-    if (failed === 0) {
-      toast(`Sent to ${label} · saved to Files`, "success");
-      setTimeout(() => dismissBatch(batchId), 4000);
-    } else if (failed === results.length) {
-      toast(`Couldn't send to ${label}. Try again.`, "error");
-    } else {
-      toast(`Sent ${results.length - failed} of ${results.length} files to ${label} — some failed`, "error");
+      const failed = results.filter((r) => r.status === "rejected").length;
+      if (failed === 0) {
+        toast(`Sent to ${label} · saved to Files`, "success");
+        setTimeout(() => dismissBatch(batchId), 4000);
+      } else if (failed === results.length) {
+        toast(`Couldn't send to ${label}. Try again.`, "error");
+      } else {
+        toast(`Sent ${results.length - failed} of ${results.length} files to ${label} — some failed`, "error");
+      }
+    } catch (err) {
+      // Anything that fails before/between per-file attempts (building the
+      // batch, reading the FileList) must still surface — otherwise it's
+      // exactly the silent "nothing happens" this whole panel exists to fix.
+      toast(err instanceof ApiClientError ? err.message : "Couldn't start that send. Try again.", "error");
+    } finally {
+      setSendingKey(null);
     }
   };
 
