@@ -78,5 +78,15 @@ export function useSendToDevice(roomId: string | undefined) {
     }
   };
 
-  return { send, sendingTo };
+  /** Same as send, one file after another — a single P2P data channel
+   * per device can't usefully carry more than one file at a time, so a
+   * multi-file pick (e.g. an <input multiple>) is sent sequentially
+   * rather than in parallel. A failed file doesn't stop the rest. */
+  const sendMultiple = async (targetDeviceId: string, targetDeviceName: string, files: File[]) => {
+    for (const file of files) {
+      await send(targetDeviceId, targetDeviceName, file);
+    }
+  };
+
+  return { send, sendMultiple, sendingTo };
 }

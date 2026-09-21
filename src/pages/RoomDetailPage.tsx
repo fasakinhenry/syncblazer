@@ -40,7 +40,7 @@ export function RoomDetailPage() {
   const { user } = useAuth();
   const { socket } = useSocket();
   const { toast } = useToast();
-  const { send, sendingTo } = useSendToDevice(roomId);
+  const { sendMultiple, sendingTo } = useSendToDevice(roomId);
 
   const [room, setRoom] = useState<Room | null>(null);
   const [members, setMembers] = useState<RoomMember[]>([]);
@@ -138,11 +138,11 @@ export function RoomDetailPage() {
   };
 
   const onFileChosen = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    const files = Array.from(e.target.files ?? []);
     const target = targetRef.current;
     e.target.value = "";
-    if (!file || !target) return;
-    void send(target.id, target.name, file);
+    if (files.length === 0 || !target) return;
+    void sendMultiple(target.id, target.name, files);
   };
 
   const deleteRoom = async () => {
@@ -202,7 +202,7 @@ export function RoomDetailPage() {
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-8">
-      <input ref={fileInputRef} type="file" className="hidden" onChange={onFileChosen} />
+      <input ref={fileInputRef} type="file" multiple className="hidden" onChange={onFileChosen} />
       <ConfettiBurst active={celebrate} onComplete={() => setCelebrate(false)} />
 
       <div className="flex items-center gap-3">

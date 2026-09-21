@@ -11,7 +11,7 @@ import { Spinner } from "@/components/ui/Spinner.tsx";
 export function LocalNetworkSection() {
   const { socket } = useSocket();
   const { defaultRoom } = useRooms();
-  const { send, sendingTo } = useSendToDevice(defaultRoom?._id);
+  const { sendMultiple, sendingTo } = useSendToDevice(defaultRoom?._id);
   const [devices, setDevices] = useState<Device[] | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const targetRef = useRef<{ id: string; name: string } | null>(null);
@@ -42,18 +42,18 @@ export function LocalNetworkSection() {
   };
 
   const onFileChosen = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    const files = Array.from(e.target.files ?? []);
     const target = targetRef.current;
     e.target.value = "";
-    if (!file || !target) return;
-    void send(target.id, target.name, file);
+    if (files.length === 0 || !target) return;
+    void sendMultiple(target.id, target.name, files);
   };
 
   if (!devices || devices.length === 0) return null;
 
   return (
     <section>
-      <input ref={fileInputRef} type="file" className="hidden" onChange={onFileChosen} />
+      <input ref={fileInputRef} type="file" multiple className="hidden" onChange={onFileChosen} />
       <div className="mb-3 flex items-center gap-2">
         <Lightning className="h-4 w-4 text-success" weight="fill" />
         <h2 className="text-sm font-semibold text-text-secondary">Local room</h2>

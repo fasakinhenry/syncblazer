@@ -85,27 +85,31 @@ export function LocalSessionPage() {
   };
 
   const onFileChosen = async (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    const files = Array.from(e.target.files ?? []);
     const target = sendTarget;
     e.target.value = "";
-    if (!file || !target) return;
-    const kind = file.type.startsWith("image/") ? "image" : "file";
+    if (files.length === 0 || !target) return;
     setSending(true);
-    setSendProgress({ target, sent: 0, total: file.size });
-    const toastId = toast(`Sending "${file.name}"… 0%`, "info");
-    let lastToastPercent = 0;
     try {
-      await sendFile(target, file, kind, (sentBytes, totalBytes) => {
-        setSendProgress({ target, sent: sentBytes, total: totalBytes });
-        const percent = totalBytes > 0 ? Math.round((sentBytes / totalBytes) * 100) : 0;
-        if (percent >= lastToastPercent + 5 || percent === 100) {
-          lastToastPercent = percent;
-          updateToast(toastId, `Sending "${file.name}"… ${percent}%`, "info");
+      for (const file of files) {
+        const kind = file.type.startsWith("image/") ? "image" : "file";
+        setSendProgress({ target, sent: 0, total: file.size });
+        const toastId = toast(`Sending "${file.name}"… 0%`, "info");
+        let lastToastPercent = 0;
+        try {
+          await sendFile(target, file, kind, (sentBytes, totalBytes) => {
+            setSendProgress({ target, sent: sentBytes, total: totalBytes });
+            const percent = totalBytes > 0 ? Math.round((sentBytes / totalBytes) * 100) : 0;
+            if (percent >= lastToastPercent + 5 || percent === 100) {
+              lastToastPercent = percent;
+              updateToast(toastId, `Sending "${file.name}"… ${percent}%`, "info");
+            }
+          });
+          updateToast(toastId, target === "all" ? `Sent "${file.name}" to everyone` : `Sent "${file.name}"`, "success");
+        } catch {
+          updateToast(toastId, `Couldn't send "${file.name}"`, "error");
         }
-      });
-      updateToast(toastId, target === "all" ? `Sent "${file.name}" to everyone` : `Sent "${file.name}"`, "success");
-    } catch {
-      updateToast(toastId, "Couldn't send that file", "error");
+      }
     } finally {
       setSending(false);
       setSendProgress(null);
@@ -245,7 +249,7 @@ export function LocalSessionPage() {
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-6">
-      <input ref={fileInputRef} type="file" className="hidden" onChange={onFileChosen} />
+      <input ref={fileInputRef} type="file" multiple className="hidden" onChange={onFileChosen} />
       <ConfettiBurst active={celebrateConnection} onComplete={() => setCelebrateConnection(false)} />
 
       <div className="flex items-center justify-between">

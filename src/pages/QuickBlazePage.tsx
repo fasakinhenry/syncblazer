@@ -30,7 +30,7 @@ export function QuickBlazePage() {
 
   const [step, setStep] = useState<Step>("select");
   const [contentType, setContentType] = useState<ContentType | null>(null);
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [text, setText] = useState("");
   const [link, setLink] = useState("");
   const [devices, setDevices] = useState<Device[]>([]);
@@ -59,17 +59,17 @@ export function QuickBlazePage() {
   const onDrop = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setDragging(false);
-    const dropped = e.dataTransfer.files[0];
-    if (!dropped) return;
-    setFile(dropped);
-    setContentType(dropped.type.startsWith("image/") ? "image" : "file");
+    const dropped = Array.from(e.dataTransfer.files);
+    if (dropped.length === 0) return;
+    setFiles(dropped);
+    setContentType(dropped[0].type.startsWith("image/") ? "image" : "file");
     setStep("compose");
   };
 
   const reset = () => {
     setStep("select");
     setContentType(null);
-    setFile(null);
+    setFiles([]);
     setText("");
     setLink("");
     setDestinationId(devices.length === 1 ? devices[0]._id : null);
@@ -82,8 +82,8 @@ export function QuickBlazePage() {
     !!destinationId &&
     !!defaultRoom &&
     !!currentDevice &&
-    ((contentType === "file" && !!file) ||
-      (contentType === "image" && !!file) ||
+    ((contentType === "file" && files.length > 0) ||
+      (contentType === "image" && files.length > 0) ||
       (contentType === "text" && text.trim().length > 0) ||
       (contentType === "link" && link.trim().length > 0));
 
@@ -97,45 +97,56 @@ export function QuickBlazePage() {
     const canAttemptP2P = destinationDevice?.status === "online";
 
     try {
-      let transferId: string;
       let transferMethod: "local" | "cloud" = "cloud";
 
       if (contentType === "file" || contentType === "image") {
-        const p2p = canAttemptP2P
-          ? await sendFileP2P(destinationId, file!, contentType, (sent, total) =>
-              setProgress(Math.round((sent / total) * 100))
-            )
-          : { ok: false };
+        // One file after another — a direct P2P data channel only carries
+        // one file at a time, and each file gets its own Transfer record
+        // regardless of which path (local/cloud) it ends up taking.
+        let usedCloud = false;
+        const total = files.length;
+        for (let i = 0; i < total; i++) {
+          const f = files[i];
+          const baseProgress = (i / total) * 100;
+          const p2p = canAttemptP2P
+            ? await sendFileP2P(destinationId, f, contentType, (sent, fileTotal) =>
+                setProgress(Math.round(baseProgress + (fileTotal > 0 ? sent / fileTotal : 0) * (100 / total)))
+              )
+            : { ok: false };
 
-        if (p2p.ok) {
-          transferMethod = "local";
-          const { transfer } = await api.transfers.create({
-            roomId: defaultRoom._id,
-            senderDeviceId: currentDevice._id,
-            receiverDeviceId: destinationId,
-            type: contentType,
-            name: file!.name,
-            size: file!.size,
-            mimeType: file!.type,
-            transferMethod,
-          });
-          transferId = transfer._id;
-        } else {
-          setProgress(0);
-          const uploaded = await api.uploads.uploadWithProgress(file!, setProgress);
-          const { transfer } = await api.transfers.create({
-            roomId: defaultRoom._id,
-            senderDeviceId: currentDevice._id,
-            receiverDeviceId: destinationId,
-            type: contentType,
-            name: file!.name,
-            size: uploaded.size,
-            mimeType: uploaded.mimeType,
-            storageKey: uploaded.key,
-            transferMethod: "cloud",
-          });
-          transferId = transfer._id;
+          let transfer;
+          if (p2p.ok) {
+            ({ transfer } = await api.transfers.create({
+              roomId: defaultRoom._id,
+              senderDeviceId: currentDevice._id,
+              receiverDeviceId: destinationId,
+              type: contentType,
+              name: f.name,
+              size: f.size,
+              mimeType: f.type,
+              transferMethod: "local",
+            }));
+          } else {
+            usedCloud = true;
+            const uploaded = await api.uploads.uploadWithProgress(f, (percent) =>
+              setProgress(Math.round(baseProgress + percent * (1 / total)))
+            );
+            ({ transfer } = await api.transfers.create({
+              roomId: defaultRoom._id,
+              senderDeviceId: currentDevice._id,
+              receiverDeviceId: destinationId,
+              type: contentType,
+              name: f.name,
+              size: uploaded.size,
+              mimeType: uploaded.mimeType,
+              storageKey: uploaded.key,
+              transferMethod: "cloud",
+            }));
+          }
+          await api.transfers.updateStatus(transfer._id, { status: "completed", progress: 100 });
         }
+        transferMethod = usedCloud ? "cloud" : "local";
+        setProgress(100);
       } else {
         const value = contentType === "text" ? text : link;
         const name = contentType === "link" ? value.slice(0, 80) : value.split("\n")[0].slice(0, 80) || "Text";
@@ -152,11 +163,10 @@ export function QuickBlazePage() {
           textContent: value,
           transferMethod,
         });
-        transferId = transfer._id;
         setProgress(100);
+        await api.transfers.updateStatus(transfer._id, { status: "completed", progress: 100 });
       }
 
-      await api.transfers.updateStatus(transferId, { status: "completed", progress: 100 });
       setLastMethod(transferMethod);
       setStep("done");
     } catch (err) {
@@ -211,22 +221,25 @@ export function QuickBlazePage() {
               <input
                 ref={fileInputRef}
                 type="file"
+                multiple
                 accept={contentType === "image" ? "image/*" : undefined}
                 className="hidden"
-                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
               />
               <button
                 onClick={() => fileInputRef.current?.click()}
                 className="flex w-full flex-col items-center gap-2 rounded-xl border-2 border-dashed border-border p-8 text-center hover:border-brand"
               >
                 <UploadSimple className="h-6 w-6 text-text-secondary" />
-                {file ? (
+                {files.length > 0 ? (
                   <span className="text-sm text-text-primary">
-                    {file.name} · {formatBytes(file.size)}
+                    {files.length === 1
+                      ? `${files[0].name} · ${formatBytes(files[0].size)}`
+                      : `${files.length} files selected · ${formatBytes(files.reduce((sum, f) => sum + f.size, 0))}`}
                   </span>
                 ) : (
                   <span className="text-sm text-text-secondary">
-                    Click to choose, or drag a {contentType === "image" ? "image" : "file"} anywhere on this page
+                    Click to choose, or drag {contentType === "image" ? "images" : "files"} anywhere on this page — you can pick more than one
                   </span>
                 )}
               </button>
@@ -312,7 +325,11 @@ export function QuickBlazePage() {
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-success/10 text-success">
             <Check className="h-6 w-6" />
           </div>
-          <p className="font-medium text-text-primary">Blazed successfully</p>
+          <p className="font-medium text-text-primary">
+            {(contentType === "file" || contentType === "image") && files.length > 1
+              ? `${files.length} files blazed successfully`
+              : "Blazed successfully"}
+          </p>
           <p className="text-sm text-text-secondary">
             {lastMethod === "local" ? "Sent directly, device to device" : "Sent via cloud relay"}
           </p>
